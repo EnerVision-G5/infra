@@ -1,0 +1,10 @@
+---
+# Contenu de /etc/docker/daemon.json (rendu en JSON).
+#
+# containerd-snapshotter: false  -> désactive le magasin d'images containerd et
+# repasse Docker sur le driver de stockage overlay2 classique. Nécessaire pour
+# cAdvisor, qui ne sait pas lire la disposition "overlayfs" du snapshotter
+# containerd et n'énumère alors aucun conteneur (dashboards Docker vides).
+docker_engine_daemon_options:
+  features:
+    containerd-snapshotter: false
