@@ -1,0 +1,47 @@
+---
+# SSH
+ssh_port: 2222
+
+# TRAEFIK
+traefik_domain: "traefik.enervision.com"
+traefik_entrypoint: "web"
+traefik_certresolver: "letsencrypt"
+
+# GARAGE
+garage_rpc_secret: "5dac3180a256d72d3beb3dc5103628518eac8f03cfd48eaa45cd6f7a10163862"
+garage_s3_host: "s3.enervision.com"
+garage_web_host: "web.enervision.com"
+garage_ui_host: "garage.enervision.com"
+garage_s3_region: "garage"
+garage_s3_root_domain: ".s3.enervision.com"
+garage_web_root_domain: ".web.enervision.com"
+garage_admin_token: "770fcf8201bafc25a58f33f90250a6f79d7df6ceade0e5bb102d6ab1e445f8c5"
+garage_metrics_token: "token-metrics-test"
+
+acme_email: "admin@enervision.com"
+
+# TIMESCALEDB
+timescaledb_db: "enervision"
+timescaledb_user: "enervision"
+timescaledb_password: "A_REMPLACER" # idéalement via ansible-vault
+
+# github ghcr
+
+ghcr_username: "A_REMPLACER"
+ghcr_token: "A_REMPLACER"
+
+# MONITORING
+monitoring_grafana_host: "grafana.enervision.com"
+monitoring_grafana_admin_user: "admin"
+monitoring_grafana_admin_password: "admin"
+
+# DOCKER
+docker_external_networks:
+  [
+    "proxy_network",
+    "api_network",
+    "db_network",
+    "storage_network",
+    "ml_network",
+    "monitoring_network",
+  ]
