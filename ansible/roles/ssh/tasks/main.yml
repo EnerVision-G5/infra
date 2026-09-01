@@ -1,0 +1,46 @@
+---
+- name: Configure SSH hardening
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/99-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      Port {{ ssh_port }}
+      PermitRootLogin no
+      PubkeyAuthentication yes
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitEmptyPasswords no
+  register: ssh_hardening
+
+- name: Validate SSH configuration
+  ansible.builtin.command:
+    cmd: /usr/sbin/sshd -t
+  changed_when: false
+
+- name: Disable SSH socket activation
+  ansible.builtin.systemd_service:
+    name: ssh.socket
+    state: stopped
+    enabled: false
+
+- name: Remove socket activation service override
+  ansible.builtin.file:
+    path: /etc/systemd/system/ssh.service.d/00-socket.conf
+    state: absent
+
+- name: Remove static SSH socket address override
+  ansible.builtin.file:
+    path: /etc/systemd/system/ssh.socket.d/addresses.conf
+    state: absent
+
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Enable and restart classic SSH service
+  ansible.builtin.systemd_service:
+    name: ssh.service
+    enabled: true
+    state: restarted
