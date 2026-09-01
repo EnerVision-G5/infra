@@ -1,0 +1,33 @@
+- name: Create traefik directory
+  ansible.builtin.file:
+    path: /opt/srv/traefik
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Generate traefik docker compose file
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: /opt/srv/traefik/compose.yml
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Generate traefik environment file
+  ansible.builtin.template:
+    src: traefik.env.j2
+    dest: /opt/srv/traefik/.env
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Deploy traefik
+  community.docker.docker_compose_v2:
+    project_src: /opt/srv/traefik
+    files:
+      - compose.yml
+    env_files:
+      - .env
+    state: present
