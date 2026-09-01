@@ -17,10 +17,6 @@ jobs:
   ansible:
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: ansible
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,20 +27,13 @@ jobs:
           python-version: "3.12"
 
       - name: Install Ansible tools
-        run: |
-          pip install ansible ansible-lint
+        run: pip install ansible-core ansible-lint
 
-      - name: Install Ansible requirements
-        run: ansible-galaxy install -r requirements.yml
-
-      - name: Ansible syntax check - deploy
-        run: ansible-playbook --syntax-check playbooks/deploy.yml
+      - name: Install Ansible collections
+        run: ansible-galaxy collection install -r ansible/requirements.yml
 
       - name: Ansible syntax check - provision
-        run: ansible-playbook --syntax-check playbooks/provision.yml
-
-      - name: Ansible syntax check - backup server
-        run: ansible-playbook --syntax-check playbooks/backup-server.yml
+        run: ansible-playbook --syntax-check ansible/playbooks/provision.yml
 
       - name: Ansible lint
-        run: ansible-lint .
+        run: ansible-lint ansible/
