@@ -1,0 +1,160 @@
+# Déployé par le rôle Ansible "monitoring" — ne pas éditer sur l'hôte.
+# Stack observabilité : Grafana (exposé via Traefik) + Prometheus, Loki,
+# Promtail, node-exporter, cAdvisor (uniquement sur monitoring_network).
+services:
+  grafana:
+    image: {{ monitoring_grafana_image }}
+    container_name: grafana
+    restart: unless-stopped
+
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?definir GRAFANA_ADMIN_USER dans .env}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?definir GRAFANA_ADMIN_PASSWORD dans .env}
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+
+    networks:
+      - monitoring_network
+      - proxy_network
+
+    depends_on:
+      - prometheus
+      - loki
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy_network"
+
+      - 'traefik.http.routers.grafana.rule=Host(`{{ monitoring_grafana_host }}`)'
+      - "traefik.http.routers.grafana.entrypoints={{ traefik_entrypoint }}"
+      # - "traefik.http.routers.grafana.tls=true"
+      # - "traefik.http.routers.grafana.tls.certresolver={{ traefik_certresolver }}"
+      - "traefik.http.routers.grafana.service=grafana"
+      - "traefik.http.services.grafana.loadbalancer.server.port={{ monitoring_grafana_port }}"
+
+  prometheus:
+    image: {{ monitoring_prometheus_image }}
+    container_name: prometheus
+    restart: unless-stopped
+
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time={{ monitoring_prometheus_retention }}
+      - --web.enable-lifecycle
+
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+
+    networks:
+      - monitoring_network
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9090/-/healthy || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  loki:
+    image: {{ monitoring_loki_image }}
+    container_name: loki
+    restart: unless-stopped
+
+    command:
+      - -config.file=/etc/loki/loki-config.yml
+
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki_data:/loki
+
+    networks:
+      - monitoring_network
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3100/ready || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+
+  promtail:
+    image: {{ monitoring_promtail_image }}
+    container_name: promtail
+    restart: unless-stopped
+
+    command:
+      - -config.file=/etc/promtail/promtail-config.yml
+
+    volumes:
+      - ./promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - promtail_data:/tmp
+
+    networks:
+      - monitoring_network
+
+    depends_on:
+      - loki
+
+  node-exporter:
+    image: {{ monitoring_node_exporter_image }}
+    container_name: node-exporter
+    restart: unless-stopped
+
+    command:
+      - --path.rootfs=/host
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+
+    volumes:
+      - /:/host:ro,rslave
+
+    networks:
+      - monitoring_network
+
+    pid: host
+
+  cadvisor:
+    image: {{ monitoring_cadvisor_image }}
+    container_name: cadvisor
+    restart: unless-stopped
+    privileged: true
+
+    devices:
+      - /dev/kmsg
+
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+
+    networks:
+      - monitoring_network
+
+volumes:
+  grafana_data:
+  prometheus_data:
+  loki_data:
+  promtail_data:
+
+networks:
+  monitoring_network:
+    external: true
+    name: monitoring_network
+
+  proxy_network:
+    external: true
+    name: proxy_network
