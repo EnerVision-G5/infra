@@ -4,16 +4,24 @@
 -- capacités des sites 4 à 7 sont des PLACEHOLDERS à remplacer
 -- par les valeurs réelles de GET /api/v1/sites au premier
 -- démarrage de l'ETL (UPSERT ci-dessous idempotent).
+--
+-- location porte un libellé d'attente et jamais NULL, même pour
+-- les sites pas encore synchronisés : le contrat gelé déclare
+-- SiteOut.location non nullable (voir
+-- enervision/docs/contracts/openapi-api.json), un NULL ferait
+-- donc échouer GET /api/v1/sites en 500 sur la base seedée.
+-- La colonne reste nullable au schéma, c'est ce seed qui garantit
+-- la valeur jusqu'à la synchronisation par le Collector.
 -- ============================================================
 
 INSERT INTO site (site_id, site_type, site_name, location, capacity_kw, status) VALUES
     ('SITE001', 'office',     'Bureau Paris La Défense', 'Paris, France',     200, 'active'),
     ('SITE002', 'factory',    'Usine Lyon Vénissieux',   'Lyon, France',     1000, 'active'),
     ('SITE003', 'datacenter', 'Data Center Marseille',   'Marseille, France', 800, 'active'),
-    ('SITE004', 'unknown',    'Site 4 (à synchroniser)', NULL,                500, 'active'),
-    ('SITE005', 'unknown',    'Site 5 (à synchroniser)', NULL,                500, 'active'),
-    ('SITE006', 'unknown',    'Site 6 (à synchroniser)', NULL,                500, 'active'),
-    ('SITE007', 'unknown',    'Site 7 (à synchroniser)', NULL,                630, 'active')
+    ('SITE004', 'unknown',    'Site 4 (à synchroniser)', 'À synchroniser',    500, 'active'),
+    ('SITE005', 'unknown',    'Site 5 (à synchroniser)', 'À synchroniser',    500, 'active'),
+    ('SITE006', 'unknown',    'Site 6 (à synchroniser)', 'À synchroniser',    500, 'active'),
+    ('SITE007', 'unknown',    'Site 7 (à synchroniser)', 'À synchroniser',    630, 'active')
 ON CONFLICT (site_id) DO UPDATE SET
     site_type   = EXCLUDED.site_type,
     site_name   = EXCLUDED.site_name,
