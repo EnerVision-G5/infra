@@ -1,0 +1,10 @@
+# Fuites historiques — présentes UNIQUEMENT dans l'historique Git (commit
+# d890a722, avant la sécurisation Vault EV-57). Le fichier concerné ne contient
+# plus aucun secret en clair dans l'arbre courant.
+#
+# ⚠️ Ces deux secrets Garage sont considérés comme COMPROMIS : ils doivent être
+# rotés sur l'hôte (nouveau rpc_secret + admin_token) puis renseignés dans le
+# Vault chiffré. Une purge d'historique (git filter-repo / BFG) reste
+# recommandée si le dépôt est diffusé au-delà de l'équipe.
+d890a722f54a690a3bd369f82f22a9b07b694e90:ansible/inventories/on-premise/group_vars/all.yml:generic-api-key:11
+d890a722f54a690a3bd369f82f22a9b07b694e90:ansible/inventories/on-premise/group_vars/all.yml:generic-api-key:18
