@@ -32,9 +32,10 @@
 --   psql -U enervision -d enervision -f 04_app_user_auth.sql
 -- ============================================================
 
--- 1. Colonne de hachage. Nullable à dessein : une ligne fédérée
--- future n'a pas de mot de passe local, et l'API refuse alors
--- l'authentification par mot de passe pour ce compte.
+-- 1. Colonne de hachage (argon2id, 97 caractères aux paramètres
+-- actuels). Nullable à dessein : une ligne fédérée future n'a pas de
+-- mot de passe local, et l'API refuse alors l'authentification par
+-- mot de passe pour ce compte.
 ALTER TABLE app_user
     ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);
 
@@ -81,10 +82,10 @@ COMMENT ON COLUMN app_user.oauth_subject IS
     ' le claim sub du JWT. Unique par oauth_provider.';
 
 COMMENT ON COLUMN app_user.password_hash IS
-    'Hachage bcrypt du mot de passe, produit par l''API (passlib) ou par le'
-    ' seed de développement (pgcrypto). Jamais de mot de passe en clair.'
-    ' NULL pour une identité fédérée, qui ne peut alors pas se connecter par'
-    ' mot de passe.';
+    'Hachage argon2id du mot de passe, produit par argon2-cffi cote API comme'
+    ' cote seed de developpement. Jamais de mot de passe en clair. NULL pour'
+    ' une identite federee, qui ne peut alors pas se connecter par mot de'
+    ' passe.';
 
 COMMENT ON COLUMN app_user.role IS
     'Rôle applicatif, aligné sur UserOut.role du contrat gelé : reader en'

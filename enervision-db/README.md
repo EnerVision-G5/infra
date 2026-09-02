@@ -79,7 +79,7 @@ passe sont stockés hachés. Un **compte local** est donc une ligne avec :
 |---|---|
 | `oauth_provider` | `'local'` |
 | `oauth_subject` | le `username`, publié tel quel dans `UserOut.username` et dans le claim `sub` du JWT |
-| `password_hash` | hachage bcrypt, produit par l'API ou par le seed de dev |
+| `password_hash` | hachage **argon2id**, produit par l'API ou par le seed de dev |
 | `role` | `reader` ou `writer`, valeurs du contrat gelé |
 
 La clé de connexion est la contrainte `UNIQUE (oauth_provider, oauth_subject)`
@@ -88,22 +88,37 @@ autre `oauth_provider`, sans nouvelle migration.
 
 ## Utilisateurs de développement
 
-`dev-seed/01_dev_users.sql` crée deux comptes, `dev.reader` et `dev.writer`.
-Il est **hors de `initdb/`** à dessein : les scripts d'`initdb` s'exécutent au
-premier démarrage de n'importe quelle base, production comprise, et deux
-comptes dont le mot de passe est connu du dépôt n'y ont pas leur place.
-L'appliquer demande un geste explicite.
+`dev-seed/dev_users.py` produit le SQL créant deux comptes, `dev.reader` et
+`dev.writer`. Il **écrit sur la sortie standard** sans toucher la base : le SQL
+est relisible avant d'être appliqué, et aucun pilote de base n'est nécessaire.
 
 ```bash
-docker compose exec -e DEV_USERS_PASSWORD='mon-mot-de-passe' timescaledb \
-    psql -U enervision -d enervision -f /dev-seed/01_dev_users.sql
+pip install -r enervision-db/dev-seed/requirements.txt
+
+DEV_USERS_PASSWORD='mon-mot-de-passe' \
+    python enervision-db/dev-seed/dev_users.py \
+    | docker compose exec -T timescaledb psql -U enervision -d enervision
 ```
 
 Le mot de passe n'est jamais écrit dans le dépôt : il est lu dans
-`DEV_USERS_PASSWORD` et haché par `pgcrypto` au moment du seed, en bcrypt coût
-12, interchangeable avec un hachage produit par l'API. Sans la variable, le
-défaut est `changeme-dev`. Rejouer le script est aussi le moyen de changer le
-mot de passe de ces deux comptes.
+`DEV_USERS_PASSWORD` et haché au moment de la génération. Sans la variable, le
+défaut est `changeme-dev`, et le script le signale sur `stderr`. Le SQL produit
+est un `UPSERT` : le rejouer est aussi le moyen de changer le mot de passe de
+ces deux comptes.
+
+Ce fichier est **hors de `initdb/`** à dessein : les scripts d'`initdb`
+s'exécutent au premier démarrage de n'importe quelle base, production comprise,
+et deux comptes dont le mot de passe est connu du dépôt n'y ont pas leur place.
+L'appliquer demande un geste explicite.
+
+### Pourquoi un script Python et non un fichier `.sql`
+
+Les mots de passe sont hachés en **argon2id**, et PostgreSQL ne sait pas le
+faire : son extension `pgcrypto` ne propose que bcrypt, md5, des et xdes.
+Produire les hachages avec une autre bibliothèque que celle de l'API ferait
+reposer la connexion sur la compatibilité de deux implémentations distinctes.
+Le script utilise donc exactement la même, `argon2-cffi`, épinglée à la même
+version, avec les mêmes paramètres par défaut qu'`app/password.py` côté API.
 
 ## Règle d'évolution
 

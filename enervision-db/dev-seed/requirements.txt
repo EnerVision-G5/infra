@@ -1,0 +1,4 @@
+# Dependance du generateur de seed de developpement (dev_users.py).
+# Meme version que celle epinglee cote API (api/requirements.txt) : les
+# hachages produits ici doivent etre verifiables par app/password.py.
+argon2-cffi==25.1.0
