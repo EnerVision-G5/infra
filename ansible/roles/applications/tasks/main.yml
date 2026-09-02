@@ -1,0 +1,119 @@
+---
+- name: Vérifier que chaque application référence un SHA versionné
+  ansible.builtin.assert:
+    that:
+      - item.sha | length > 0
+    fail_msg: >-
+      L'application '{{ item.name }}' n'a pas de SHA défini. Renseigner
+      applications_{{ item.name }}_sha dans les variables versionnées du dépôt.
+    quiet: true
+  loop: "{{ applications_services }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Vérifier l'unicité des SHA (une version distincte par application)
+  ansible.builtin.assert:
+    that:
+      - (applications_services | map(attribute='sha') | list | unique | length)
+        == (applications_services | length)
+    fail_msg: "Front, API et Predict doivent utiliser chacun un SHA distinct."
+    quiet: true
+
+- name: Créer le répertoire racine des applications
+  ansible.builtin.file:
+    path: "{{ applications_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Créer un répertoire de déploiement par application
+  ansible.builtin.file:
+    path: "{{ applications_dir }}/{{ item.name }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: "{{ applications_services }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Créer les réseaux Docker requis par les applications
+  community.docker.docker_network:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ applications_networks }}"
+
+- name: S'authentifier auprès du registre GHCR
+  community.docker.docker_login:
+    registry: "{{ applications_registry }}"
+    username: "{{ ghcr_username }}"
+    password: "{{ ghcr_token }}"
+  no_log: true
+
+- name: Générer le fichier d'environnement de chaque application
+  ansible.builtin.template:
+    src: "{{ item.name }}.env.j2"
+    dest: "{{ applications_dir }}/{{ item.name }}/.env"
+    owner: root
+    group: root
+    mode: "0600"
+  loop: "{{ applications_services }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+
+- name: Générer le compose.yml de chaque application
+  ansible.builtin.template:
+    src: "{{ item.name }}.compose.yml.j2"
+    dest: "{{ applications_dir }}/{{ item.name }}/compose.yml"
+    owner: root
+    group: root
+    mode: "0600"
+  loop: "{{ applications_services }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Mémoriser le SHA déployé de chaque application
+  ansible.builtin.copy:
+    dest: "{{ applications_dir }}/{{ item.name }}/.sha"
+    content: "{{ item.sha }}\n"
+    owner: root
+    group: root
+    mode: "0600"
+  loop: "{{ applications_services }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: applications_sha_state
+
+- name: Déterminer les applications dont la version a changé
+  ansible.builtin.set_fact:
+    applications_changed: >-
+      {{ applications_sha_state.results
+         | selectattr('changed')
+         | map(attribute='item.name')
+         | list }}
+
+- name: Récupérer depuis GHCR l'image des applications concernées
+  community.docker.docker_image:
+    name: "{{ item.image }}"
+    source: pull
+    force_source: true
+  loop: "{{ applications_services }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.name in applications_changed
+
+- name: (Re)déployer chaque application via son compose dédié
+  community.docker.docker_compose_v2:
+    project_src: "{{ applications_dir }}/{{ item.name }}"
+    project_name: "enervision-{{ item.name }}"
+    files:
+      - compose.yml
+    env_files:
+      - .env
+    pull: missing
+    state: present
+  loop: "{{ applications_services }}"
+  loop_control:
+    label: "{{ item.name }}"

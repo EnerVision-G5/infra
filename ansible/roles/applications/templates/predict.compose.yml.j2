@@ -1,0 +1,40 @@
+# Déployé par le rôle Ansible "applications" — ne pas éditer sur l'hôte.
+# Service Predict EnerVision — image épinglée sur applications_predict_sha.
+# Appelé par l'API sur ml_network, accède à TimescaleDB sur db_network.
+services:
+  predict:
+    image: {{ applications_image_namespace }}/{{ applications_predict_image_name }}:{{ applications_predict_sha }}
+    container_name: enervision-predict
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    networks:
+      - proxy_network
+      - db_network
+      - ml_network
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy_network"
+
+      - 'traefik.http.routers.enervision-predict.rule=Host(`{{ applications_predict_host }}`)'
+      - "traefik.http.routers.enervision-predict.entrypoints={{ traefik_entrypoint }}"
+      # - "traefik.http.routers.enervision-predict.tls=true"
+      # - "traefik.http.routers.enervision-predict.tls.certresolver={{ traefik_certresolver }}"
+      - "traefik.http.routers.enervision-predict.service=enervision-predict"
+      - "traefik.http.services.enervision-predict.loadbalancer.server.port={{ applications_predict_port }}"
+
+networks:
+  proxy_network:
+    external: true
+    name: proxy_network
+
+  db_network:
+    external: true
+    name: db_network
+
+  ml_network:
+    external: true
+    name: ml_network

@@ -1,0 +1,75 @@
+---
+# Répertoire racine de déploiement sur l'hôte (un sous-dossier par application,
+# chacun avec son propre compose.yml et son .env).
+applications_dir: /opt/srv/applications
+
+# Registre d'images. Les images applicatives sont publiées sur le GHCR de
+# l'organisation par les pipelines des dépôts front / api / predict.
+applications_registry: ghcr.io
+applications_image_namespace: "ghcr.io/enervision-g5"
+
+# Noms des images (repository GHCR, sans tag).
+applications_front_image_name: front
+applications_api_image_name: api
+applications_predict_image_name: predict
+
+# --------------------------------------------------------------------------
+# Versions déployées — un SHA distinct par application.
+#
+# Chaque valeur est le tag GHCR immuable d'un commit précis (généré par
+# docker/metadata-action : `sha-<git-sha>`). Ces variables sont VERSIONNÉES
+# dans le dépôt (group_vars/all.yml) et mises à jour à chaque release : c'est
+# le dépôt qui référence la version déployée, jamais `latest`.
+#
+# Laissées vides ici volontairement pour forcer une définition explicite.
+# --------------------------------------------------------------------------
+applications_front_sha: ""
+applications_api_sha: ""
+applications_predict_sha: ""
+
+# Domaines publics (routage Traefik). Surchargeables dans group_vars.
+applications_front_host: "app.enervision.com"
+applications_api_host: "api.enervision.com"
+applications_predict_host: "predict.enervision.com"
+
+# Ports internes exposés par chaque conteneur (cibles des services Traefik).
+applications_front_port: 80
+applications_api_port: 8080
+applications_predict_port: 8000
+
+# Réseaux Docker externes requis par la stack applicative (créés si absents).
+#   proxy_network : exposition via Traefik
+#   db_network    : accès à TimescaleDB (api, predict)
+#   ml_network    : appels internes api <-> predict
+applications_networks:
+  - proxy_network
+  - db_network
+  - ml_network
+
+# Connexion applicative à la base (construite à partir des variables du rôle
+# timescaledb ; le mot de passe vient de group_vars chiffré avec ansible-vault).
+applications_api_database_url: >-
+  postgresql+psycopg://{{ timescaledb_user }}:{{ timescaledb_password }}@timescaledb:5432/{{ timescaledb_db }}
+applications_predict_database_url: "{{ applications_api_database_url }}"
+
+# Réglages API non sensibles.
+applications_api_environment: production
+applications_api_jwt_algorithm: HS256
+applications_api_access_token_expire_minutes: 60
+
+# applications_api_secret_key : OBLIGATOIRE — défini dans group_vars, chiffré
+# avec ansible-vault. Aucune valeur par défaut volontairement.
+
+# Description normalisée des applications, consommée par les tasks. Le nom sert
+# aussi de sous-dossier et de préfixe de template (<name>.compose.yml.j2,
+# <name>.env.j2).
+applications_services:
+  - name: front
+    image: "{{ applications_image_namespace }}/{{ applications_front_image_name }}:{{ applications_front_sha }}"
+    sha: "{{ applications_front_sha }}"
+  - name: api
+    image: "{{ applications_image_namespace }}/{{ applications_api_image_name }}:{{ applications_api_sha }}"
+    sha: "{{ applications_api_sha }}"
+  - name: predict
+    image: "{{ applications_image_namespace }}/{{ applications_predict_image_name }}:{{ applications_predict_sha }}"
+    sha: "{{ applications_predict_sha }}"
