@@ -51,6 +51,60 @@ docker compose exec timescaledb psql -U enervision -d enervision -c "
 - **Seed `site`** : SITE004–007 sont des placeholders, l'ETL doit faire un
   UPSERT depuis `GET /api/v1/sites` au démarrage.
 
+## Migrations appliquées
+
+| Fichier | Objet |
+|---|---|
+| `initdb/01_schema.sql` | schéma figé v1.0 |
+| `initdb/02_seed_sites.sql` | référentiel des 7 sites |
+| `initdb/03_mesure_imputation.sql` | colonnes d'imputation sur `mesure` (EV-08) |
+| `initdb/04_app_user_auth.sql` | comptes locaux et rôles `reader` / `writer` (EV-12) |
+
+Les scripts d'`initdb/` ne sont pas rejoués sur une base déjà démarrée : les
+migrations sont idempotentes, il suffit de les appliquer à la main.
+
+```bash
+docker compose exec timescaledb \
+    psql -U enervision -d enervision \
+    -f /docker-entrypoint-initdb.d/04_app_user_auth.sql
+```
+
+### Authentification (EV-12)
+
+`app_user` ne fédère plus une identité externe : ADR-009 a retenu le flux
+OAuth2 mot de passe avec des JWT signés par l'API, et acté que les mots de
+passe sont stockés hachés. Un **compte local** est donc une ligne avec :
+
+| Colonne | Contenu |
+|---|---|
+| `oauth_provider` | `'local'` |
+| `oauth_subject` | le `username`, publié tel quel dans `UserOut.username` et dans le claim `sub` du JWT |
+| `password_hash` | hachage bcrypt, produit par l'API ou par le seed de dev |
+| `role` | `reader` ou `writer`, valeurs du contrat gelé |
+
+La clé de connexion est la contrainte `UNIQUE (oauth_provider, oauth_subject)`
+déjà présente au schéma v1.0. Une fédération réelle resterait possible sous un
+autre `oauth_provider`, sans nouvelle migration.
+
+## Utilisateurs de développement
+
+`dev-seed/01_dev_users.sql` crée deux comptes, `dev.reader` et `dev.writer`.
+Il est **hors de `initdb/`** à dessein : les scripts d'`initdb` s'exécutent au
+premier démarrage de n'importe quelle base, production comprise, et deux
+comptes dont le mot de passe est connu du dépôt n'y ont pas leur place.
+L'appliquer demande un geste explicite.
+
+```bash
+docker compose exec -e DEV_USERS_PASSWORD='mon-mot-de-passe' timescaledb \
+    psql -U enervision -d enervision -f /dev-seed/01_dev_users.sql
+```
+
+Le mot de passe n'est jamais écrit dans le dépôt : il est lu dans
+`DEV_USERS_PASSWORD` et haché par `pgcrypto` au moment du seed, en bcrypt coût
+12, interchangeable avec un hachage produit par l'API. Sans la variable, le
+défaut est `changeme-dev`. Rejouer le script est aussi le moyen de changer le
+mot de passe de ces deux comptes.
+
 ## Règle d'évolution
 
 Le schéma est figé : toute modification passe par un nouveau fichier de
