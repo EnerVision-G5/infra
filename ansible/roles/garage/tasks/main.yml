@@ -1,0 +1,42 @@
+- name: Create garage directory
+  ansible.builtin.file:
+    path: /opt/srv/garage
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Generate garage docker compose file
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: /opt/srv/garage/compose.yml
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Generate Garage configuration
+  ansible.builtin.template:
+    src: garage.toml.j2
+    dest: /opt/srv/garage/garage.toml
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Generate garage environment file
+  ansible.builtin.template:
+    src: garage.env.j2
+    dest: /opt/srv/garage/.env
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Deploy garage
+  community.docker.docker_compose_v2:
+    project_src: /opt/srv/garage
+    files:
+      - compose.yml
+    env_files:
+      - .env
+    state: present

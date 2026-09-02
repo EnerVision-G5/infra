@@ -5,23 +5,27 @@ on:
   pull_request:
 
 jobs:
-  lint-validate:
-    name: Lint et validation Terraform
+  ansible:
+    name: Lint et validation Ansible
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          submodules: recursive
+          python-version: "3.12"
 
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "1.9.8"
+      - name: Install Ansible tools
+        run: pip install ansible-core ansible-lint
 
-      - name: Lint (terraform fmt)
-        run: terraform fmt -check -recursive
+      - name: Install Ansible collections
+        run: ansible-galaxy collection install -r ansible/requirements.yml
 
-      - name: Init
-        run: terraform init -backend=false
+      - name: Ansible syntax check - provision
+        run: ansible-playbook --syntax-check ansible/playbooks/provision.yml
 
-      - name: Validate (terraform validate)
-        run: terraform validate
+      - name: Ansible lint
+        run: ansible-lint ansible/

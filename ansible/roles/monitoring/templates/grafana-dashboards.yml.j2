@@ -1,0 +1,14 @@
+# Provider de dashboards : Grafana charge tous les .json du dossier au démarrage
+# puis toutes les 30 s. Dashboards non modifiables depuis l'UI (source = fichiers).
+apiVersion: 1
+
+providers:
+  - name: default
+    orgId: 1
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/provisioning/dashboards/json
+      foldersFromFilesStructure: false

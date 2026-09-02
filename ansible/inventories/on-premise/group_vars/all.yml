@@ -1,0 +1,51 @@
+---
+# Les valeurs sensibles sont des placeholders : elles sont surchargees par des
+# variables chiffrees avec ansible-vault (plus de Key Vault depuis la V2 on-premise).
+# Aucun secret en clair ne doit etre commite dans ce fichier.
+
+# SSH
+ssh_port: 2222
+
+# TRAEFIK
+traefik_domain: "traefik.enervision.com"
+traefik_entrypoint: "web"
+traefik_certresolver: "letsencrypt"
+
+# GARAGE
+garage_rpc_secret: "A_REMPLACER" # ansible-vault
+garage_s3_host: "s3.enervision.com"
+garage_web_host: "web.enervision.com"
+garage_ui_host: "garage.enervision.com"
+garage_s3_region: "garage"
+garage_s3_root_domain: ".s3.enervision.com"
+garage_web_root_domain: ".web.enervision.com"
+garage_admin_token: "A_REMPLACER" # ansible-vault
+garage_metrics_token: "A_REMPLACER" # ansible-vault
+
+acme_email: "admin@enervision.com"
+
+# TIMESCALEDB
+timescaledb_db: "enervision"
+timescaledb_user: "enervision"
+timescaledb_password: "A_REMPLACER" # ansible-vault
+
+# github ghcr
+
+ghcr_username: "A_REMPLACER" # ansible-vault
+ghcr_token: "A_REMPLACER" # ansible-vault
+
+# MONITORING
+monitoring_grafana_host: "grafana.enervision.com"
+monitoring_grafana_admin_user: "admin"
+monitoring_grafana_admin_password: "A_REMPLACER" # ansible-vault
+
+# DOCKER
+docker_external_networks:
+  [
+    "proxy_network",
+    "api_network",
+    "db_network",
+    "storage_network",
+    "ml_network",
+    "monitoring_network",
+  ]

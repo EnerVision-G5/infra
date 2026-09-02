@@ -1,0 +1,94 @@
+---
+- name: Create monitoring directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ monitoring_dir }}"
+    - "{{ monitoring_dir }}/prometheus"
+    - "{{ monitoring_dir }}/loki"
+    - "{{ monitoring_dir }}/promtail"
+    - "{{ monitoring_dir }}/grafana/provisioning/datasources"
+    - "{{ monitoring_dir }}/grafana/provisioning/dashboards/json"
+    # Créés vides : Grafana loggue une erreur au démarrage si ces dossiers de
+    # provisioning n'existent pas (le dossier parent est monté en entier).
+    - "{{ monitoring_dir }}/grafana/provisioning/plugins"
+    - "{{ monitoring_dir }}/grafana/provisioning/alerting"
+
+- name: Generate monitoring docker compose file
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ monitoring_dir }}/compose.yml"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Generate monitoring environment file
+  ansible.builtin.template:
+    src: monitoring.env.j2
+    dest: "{{ monitoring_dir }}/.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Generate Prometheus configuration
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: "{{ monitoring_dir }}/prometheus/prometheus.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Generate Loki configuration
+  ansible.builtin.template:
+    src: loki-config.yml.j2
+    dest: "{{ monitoring_dir }}/loki/loki-config.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Generate Promtail configuration
+  ansible.builtin.template:
+    src: promtail-config.yml.j2
+    dest: "{{ monitoring_dir }}/promtail/promtail-config.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Generate Grafana datasources provisioning
+  ansible.builtin.template:
+    src: grafana-datasources.yml.j2
+    dest: "{{ monitoring_dir }}/grafana/provisioning/datasources/datasources.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Generate Grafana dashboards provider
+  ansible.builtin.template:
+    src: grafana-dashboards.yml.j2
+    dest: "{{ monitoring_dir }}/grafana/provisioning/dashboards/dashboards.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Deploy Grafana dashboards (Node Exporter 1860, cAdvisor 21743, Traefik 17346)
+  ansible.builtin.copy:
+    src: dashboards/
+    dest: "{{ monitoring_dir }}/grafana/provisioning/dashboards/json/"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Deploy monitoring stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ monitoring_dir }}"
+    files:
+      - compose.yml
+    env_files:
+      - .env
+    state: present
