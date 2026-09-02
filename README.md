@@ -23,6 +23,7 @@ le pipeline ou par un `ansible-playbook`.
 | `garage`      | Stockage objet compatible S3 (artefacts, archives)              |
 | `timescaledb` | PostgreSQL + TimescaleDB                                        |
 | `monitoring`  | Prometheus, Grafana, Loki + Promtail, node_exporter, cAdvisor   |
+| `applications` | Déploiement Front / API / Predict — un `compose.yml` par application, images GHCR épinglées par SHA |
 
 ## CI
 

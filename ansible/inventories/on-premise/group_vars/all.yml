@@ -39,6 +39,19 @@ monitoring_grafana_host: "grafana.enervision.com"
 monitoring_grafana_admin_user: "admin"
 monitoring_grafana_admin_password: "A_REMPLACER" # ansible-vault
 
+# APPLICATIONS (Front / API / Predict)
+applications_front_host: "app.enervision.com"
+applications_api_host: "api.enervision.com"
+applications_predict_host: "predict.enervision.com"
+
+# Version deployee de chaque service : tag GHCR immuable d'un commit precis
+# (sha-<git-sha>). Un SHA distinct par service, mis a jour a chaque release.
+applications_front_sha: "sha-0000000000000000000000000000000000000001"
+applications_api_sha: "sha-1111111111111111111111111111111111111111"
+applications_predict_sha: "sha-2222222222222222222222222222222222222222"
+
+applications_api_secret_key: "A_REMPLACER" # ansible-vault
+
 # DOCKER
 docker_external_networks:
   [
