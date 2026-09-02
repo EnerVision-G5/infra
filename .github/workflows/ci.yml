@@ -1,20 +1,12 @@
-name: Ansible CI
+name: ci
 
 on:
   push:
-    paths:
-      - "ansible/**"
-      - "ansible.cfg"
-      - ".github/workflows/ci-ansible.yml"
-
   pull_request:
-    paths:
-      - "ansible/**"
-      - "ansible.cfg"
-      - ".github/workflows/ci-ansible.yml"
 
 jobs:
   ansible:
+    name: Lint et validation Ansible
     runs-on: ubuntu-latest
 
     steps:

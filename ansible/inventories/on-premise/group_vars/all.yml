@@ -1,4 +1,8 @@
 ---
+# Les valeurs sensibles sont des placeholders : elles sont surchargees par des
+# variables chiffrees avec ansible-vault (plus de Key Vault depuis la V2 on-premise).
+# Aucun secret en clair ne doit etre commite dans ce fichier.
+
 # SSH
 ssh_port: 2222
 
@@ -8,32 +12,32 @@ traefik_entrypoint: "web"
 traefik_certresolver: "letsencrypt"
 
 # GARAGE
-garage_rpc_secret: "5dac3180a256d72d3beb3dc5103628518eac8f03cfd48eaa45cd6f7a10163862"
+garage_rpc_secret: "A_REMPLACER" # ansible-vault
 garage_s3_host: "s3.enervision.com"
 garage_web_host: "web.enervision.com"
 garage_ui_host: "garage.enervision.com"
 garage_s3_region: "garage"
 garage_s3_root_domain: ".s3.enervision.com"
 garage_web_root_domain: ".web.enervision.com"
-garage_admin_token: "770fcf8201bafc25a58f33f90250a6f79d7df6ceade0e5bb102d6ab1e445f8c5"
-garage_metrics_token: "token-metrics-test"
+garage_admin_token: "A_REMPLACER" # ansible-vault
+garage_metrics_token: "A_REMPLACER" # ansible-vault
 
 acme_email: "admin@enervision.com"
 
 # TIMESCALEDB
 timescaledb_db: "enervision"
 timescaledb_user: "enervision"
-timescaledb_password: "A_REMPLACER" # idéalement via ansible-vault
+timescaledb_password: "A_REMPLACER" # ansible-vault
 
 # github ghcr
 
-ghcr_username: "A_REMPLACER"
-ghcr_token: "A_REMPLACER"
+ghcr_username: "A_REMPLACER" # ansible-vault
+ghcr_token: "A_REMPLACER" # ansible-vault
 
 # MONITORING
 monitoring_grafana_host: "grafana.enervision.com"
 monitoring_grafana_admin_user: "admin"
-monitoring_grafana_admin_password: "admin"
+monitoring_grafana_admin_password: "A_REMPLACER" # ansible-vault
 
 # DOCKER
 docker_external_networks:

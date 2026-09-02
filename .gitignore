@@ -1,0 +1,23 @@
+# Secrets et variables d'environnement (jamais dans Git, cf. décision V2)
+*.env
+.env
+.env.*
+!.env.example
+vault_pass*
+*.vault
+secrets.yml
+
+# Ansible
+*.retry
+ansible/collections/
+ansible/inventories/**/host_vars/*_secrets.yml
+
+# Clés
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
+# Divers
+.DS_Store
+*.log
