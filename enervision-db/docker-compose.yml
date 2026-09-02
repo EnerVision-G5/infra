@@ -18,6 +18,10 @@ services:
     volumes:
       - timescaledb_data:/var/lib/postgresql/data
       - ./initdb:/docker-entrypoint-initdb.d:ro
+      # Seed de developpement monte en lecture seule, HORS du dossier
+      # d'initdb : il est disponible pour un `psql -f /dev-seed/...`
+      # explicite, mais jamais execute au demarrage.
+      - ./dev-seed:/dev-seed:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
