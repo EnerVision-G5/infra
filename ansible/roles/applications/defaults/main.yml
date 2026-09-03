@@ -9,10 +9,12 @@ applications_registry: ghcr.io
 applications_image_namespace: "ghcr.io/enervision-g5"
 
 # Noms des images (repository GHCR, sans tag). Ils suivent le nom du dépôt qui
-# publie l'image : le front est servi par le dépôt « dashboard », pas « front ».
+# publie l'image ; le dépôt predict, multi-services, publie sous un chemin
+# imbriqué (predict/<service>).
 applications_front_image_name: dashboard
 applications_api_image_name: api
 applications_predict_image_name: predict
+applications_collector_image_name: predict/collector
 
 # --------------------------------------------------------------------------
 # Versions déployées — un SHA distinct par application.
@@ -27,6 +29,7 @@ applications_predict_image_name: predict
 applications_front_sha: ""
 applications_api_sha: ""
 applications_predict_sha: ""
+applications_collector_sha: ""
 
 # Domaines publics (routage Traefik). Surchargeables dans group_vars.
 applications_front_host: "app.enervision.com"
@@ -49,39 +52,107 @@ applications_networks:
 
 # Connexion applicative à la base (construite à partir des variables du rôle
 # timescaledb ; le mot de passe vient de group_vars chiffré avec ansible-vault).
+#
+# Deux dialectes, non interchangeables :
+#  - l'API ouvre la base avec SQLAlchemy asynchrone -> asyncpg ;
+#  - les jobs batch de predict (collector, etl, training) l'ouvrent en
+#    synchrone via psycopg. Le service serving, lui, ne touche pas la base.
 applications_api_database_url: >-
+  postgresql+asyncpg://{{ timescaledb_user }}:{{ timescaledb_password }}@timescaledb:5432/{{ timescaledb_db }}
+# Non consommé aujourd'hui (serving ne lit pas la base) : prêt pour le jour où
+# collector / etl / training seront déployés, avec le bon dialecte psycopg.
+applications_predict_database_url: >-
   postgresql+psycopg://{{ timescaledb_user }}:{{ timescaledb_password }}@timescaledb:5432/{{ timescaledb_db }}
-applications_predict_database_url: "{{ applications_api_database_url }}"
 
-# Réglages API non sensibles.
+# --------------------------------------------------------------------------
+# API — variables du fichier .env généré (api.env.j2). Noms des clés = ceux
+# lus par app/core/config.py (pydantic-settings, MAJUSCULES).
+# --------------------------------------------------------------------------
+applications_api_app_name: "EnerVision API"
 applications_api_environment: production
+applications_api_debug: false
+# true : les endpoints protégés exigent un JWT valide (défaut de l'API, et le
+# seul réglage acceptable en production).
+applications_api_auth_enabled: true
 applications_api_jwt_algorithm: HS256
 applications_api_access_token_expire_minutes: 60
+# applications_api_jwt_secret : OBLIGATOIRE, sans valeur par défaut. Émis en
+# JWT_SECRET, doit faire au moins 32 caractères sinon l'API refuse de
+# démarrer. Défini dans group_vars par indirection Vault.
 
-# applications_api_secret_key : OBLIGATOIRE — défini dans group_vars, chiffré
-# avec ansible-vault. Aucune valeur par défaut volontairement.
+# --------------------------------------------------------------------------
+# Predict (service serving) — variables du fichier .env généré
+# (predict.env.j2). La config predict est un YAML en couches
+# (conf/base.yaml + conf/${PREDICT_ENV}.yaml) ; le .env ne fournit que les
+# ${VARIABLE} que ce YAML résout dans l'environnement.
+# --------------------------------------------------------------------------
+applications_predict_env: production
+# Racine des partitions de variables produites par l'ETL. Chemin local en
+# dev, URI s3:// vers Garage en déploiement.
+applications_predict_storage_root: "data"
+applications_predict_mlflow_tracking_uri: "http://mlflow:5000"
+# Alias MLflow du modèle servi. Le déplacer dans le registre suffit à
+# promouvoir une version, sans redéployer le service.
+applications_predict_serving_model_uri: "models:/enervision_xgboost@champion"
+
+# --------------------------------------------------------------------------
+# Collector (dépôt predict, service predict/collector) — job d'ingestion de
+# la couche brute (table `mesure`). Une seule image, deux usages :
+#  - poller : processus long, interroge /current au fil de l'eau (compose) ;
+#  - backfill : rattrapage daté, rejoué chaque nuit par un timer systemd.
+# Tous deux insèrent en ON CONFLICT DO NOTHING : aucun doublon.
+# --------------------------------------------------------------------------
+applications_collector_env: production
+applications_collector_database_url: "{{ applications_predict_database_url }}"
+# API Mock IoT : source des mesures. OBLIGATOIRE, sans repli utilisable.
+applications_collector_mock_api_url: "http://mock-iot:8000"
+applications_collector_image: >-
+  {{ applications_image_namespace }}/{{ applications_collector_image_name }}:{{ applications_collector_sha }}
+# Rattrapage nocturne. --days 2 : recouvre toujours la veille et l'avant-veille,
+# de quoi combler un poller coupé quelques heures sans jamais rien réécrire.
+applications_collector_backfill_enabled: true
+applications_collector_backfill_on_calendar: "*-*-* 02:30:00"
+applications_collector_backfill_days: 2
+# Vrai quand le rattrapage doit exister sur l'hôte (collector activé ET
+# rattrapage demandé). Pilote la pose/dépose des unités systemd.
+applications_collector_backfill_active: >-
+  {{ ('collector' in applications_enabled) and (applications_collector_backfill_enabled | bool) }}
 
 # Applications effectivement déployées. Filtre le catalogue ci-dessous : une
 # application absente de cette liste n'est ni configurée, ni tirée, ni démarrée.
-# Permet de déployer front + api sans dépendre d'une image predict encore
-# inexistante. Surchargeable dans group_vars.
+# Permet de déployer un sous-ensemble sans dépendre d'une image pas encore
+# publiée. Surchargeable dans group_vars.
 applications_enabled:
   - front
   - api
   - predict
+  - collector
 
 # Catalogue de toutes les applications connues. Le nom sert aussi de
 # sous-dossier et de préfixe de template (<name>.compose.yml.j2, <name>.env.j2).
+#
+# kind :
+#   web    — service HTTP exposé derrière Traefik (front, api) ;
+#   worker — processus long sans port ni route (poller du collector). Son
+#            compose n'a ni label Traefik ni healthcheck HTTP, et les tâches
+#            de rattrapage systemd ne s'appliquent qu'à lui.
 applications_services_catalog:
   - name: front
+    kind: web
     image: "{{ applications_image_namespace }}/{{ applications_front_image_name }}:{{ applications_front_sha }}"
     sha: "{{ applications_front_sha }}"
   - name: api
+    kind: web
     image: "{{ applications_image_namespace }}/{{ applications_api_image_name }}:{{ applications_api_sha }}"
     sha: "{{ applications_api_sha }}"
   - name: predict
+    kind: web
     image: "{{ applications_image_namespace }}/{{ applications_predict_image_name }}:{{ applications_predict_sha }}"
     sha: "{{ applications_predict_sha }}"
+  - name: collector
+    kind: worker
+    image: "{{ applications_image_namespace }}/{{ applications_collector_image_name }}:{{ applications_collector_sha }}"
+    sha: "{{ applications_collector_sha }}"
 
 # Liste consommée par les tasks : le catalogue restreint aux applications
 # activées, dans l'ordre du catalogue.

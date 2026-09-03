@@ -126,3 +126,47 @@
   loop: "{{ applications_services }}"
   loop_control:
     label: "{{ item.name }}"
+
+# --------------------------------------------------------------------------
+# Rattrapage daté du collector : un timer systemd qui rejoue la fenêtre
+# glissante chaque nuit. Séparé du poller (compose) : ce n'est pas un
+# processus long mais un `docker run --rm` ponctuel.
+# --------------------------------------------------------------------------
+- name: Installer les unités systemd du rattrapage collector
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - collector-backfill.service
+    - collector-backfill.timer
+  when: applications_collector_backfill_active | bool
+  notify: Reload systemd
+
+- name: Activer et planifier le rattrapage collector
+  ansible.builtin.systemd_service:
+    name: collector-backfill.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: applications_collector_backfill_active | bool
+
+- name: Retirer le rattrapage collector quand il est désactivé
+  ansible.builtin.systemd_service:
+    name: collector-backfill.timer
+    enabled: false
+    state: stopped
+  failed_when: false
+  when: not (applications_collector_backfill_active | bool)
+
+- name: Retirer les unités systemd du rattrapage collector quand il est désactivé
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}"
+    state: absent
+  loop:
+    - collector-backfill.service
+    - collector-backfill.timer
+  when: not (applications_collector_backfill_active | bool)
+  notify: Reload systemd

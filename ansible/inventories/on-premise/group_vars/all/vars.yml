@@ -39,18 +39,45 @@ applications_front_host: "app.enervision.com"
 applications_api_host: "api.enervision.com"
 applications_predict_host: "predict.enervision.com"
 
-# Applications deployees. predict n'a pas encore d'image publiee sur GHCR :
-# on ne deploie que front + api pour ne pas dependre d'une image absente.
-# Rajouter "predict" ici quand son image est disponible.
+# --- API : contenu du .env généré (api.env.j2) ----------------------------
+# DATABASE_URL et JWT_SECRET ne sont PAS ici : l'URL est construite par le rôle
+# depuis les variables timescaledb, le secret vient du Vault (plus bas).
+applications_api_app_name: "EnerVision API"
+applications_api_environment: "production"
+applications_api_debug: false
+applications_api_auth_enabled: true
+applications_api_jwt_algorithm: "HS256"
+applications_api_access_token_expire_minutes: 60
+
+# --- Predict (serving) : contenu du .env généré (predict.env.j2) ----------
+# À ajuster avant d'ajouter "predict" à applications_enabled.
+applications_predict_env: "production"
+applications_predict_storage_root: "s3://enervision-features"
+applications_predict_mlflow_tracking_uri: "http://mlflow:5000"
+applications_predict_serving_model_uri: "models:/enervision_xgboost@champion"
+
+# --- Collector (poller + rattrapage) : contenu du .env généré (collector.env.j2)
+# DATABASE_URL est construite par le rôle (dialecte psycopg).
+applications_collector_env: "production"
+# URL de l'API Mock IoT source des mesures — À RENSEIGNER.
+applications_collector_mock_api_url: "http://10.105.200.45:8000"
+applications_collector_backfill_enabled: true
+applications_collector_backfill_on_calendar: "*-*-* 02:30:00"
+applications_collector_backfill_days: 2
+
+# Applications deployees. predict (serving) n'a pas encore d'image publiee.
+# Rajouter "predict" ici quand son image sera disponible.
 applications_enabled:
   - front
   - api
+  - collector
 
 # Version deployee de chaque service : tag GHCR immuable d'un commit precis
 # (sha-<git-sha>). Un SHA distinct par service, mis a jour a chaque release.
 applications_front_sha: "sha-72d59f0ed41bf24035899472929cfba8464b42f0"
 applications_api_sha: "sha-b4ea56e4a006ffd1237d68365e666ca6b1998679"
 applications_predict_sha: "sha-2222222222222222222222222222222222222222"
+applications_collector_sha: "sha-f3b30657b69b15fe11007ceaab4bc228728d16e5"
 
 # DOCKER
 docker_external_networks:
@@ -75,4 +102,8 @@ ghcr_token: "{{ vault_ghcr_token }}"
 
 monitoring_grafana_admin_password: "{{ vault_monitoring_grafana_admin_password }}"
 
-applications_api_secret_key: "{{ vault_applications_api_secret_key }}"
+# Émis en JWT_SECRET dans api.env. >= 32 caractères, sinon l'API refuse de
+# démarrer. La clé Vault garde son nom historique (vault_applications_api_secret_key)
+# pour ne pas avoir à rechiffrer le Vault ; générer une valeur avec
+#   python -c "import secrets; print(secrets.token_urlsafe(48))"
+applications_api_jwt_secret: "{{ vault_applications_api_secret_key }}"
