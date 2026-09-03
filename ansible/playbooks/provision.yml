@@ -3,17 +3,6 @@
   become: true
 
   roles:
-    - role: base
-      tags: base
-
-    - role: ssh
-      tags:
-        - ssh
-
-    - role: firewall
-      tags:
-        - firewall
-
     - role: docker_engine
       tags:
         - docker
@@ -21,10 +10,6 @@
     - role: traefik
       tags:
         - traefik
-
-    - role: security
-      tags:
-        - security
 
     - role: garage
       tags:
