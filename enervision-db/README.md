@@ -59,6 +59,7 @@ docker compose exec timescaledb psql -U enervision -d enervision -c "
 | `initdb/02_seed_sites.sql` | référentiel des 7 sites |
 | `initdb/03_mesure_imputation.sql` | colonnes d'imputation sur `mesure` (EV-08) |
 | `initdb/04_app_user_auth.sql` | comptes locaux et rôles `reader` / `writer` (EV-12) |
+| `initdb/05_prediction_contrat.sql` | les trois champs du contrat absents de `prediction` (EV-38) |
 
 Les scripts d'`initdb/` ne sont pas rejoués sur une base déjà démarrée : les
 migrations sont idempotentes, il suffit de les appliquer à la main.
@@ -85,6 +86,50 @@ passe sont stockés hachés. Un **compte local** est donc une ligne avec :
 La clé de connexion est la contrainte `UNIQUE (oauth_provider, oauth_subject)`
 déjà présente au schéma v1.0. Une fédération réelle resterait possible sous un
 autre `oauth_provider`, sans nouvelle migration.
+
+### Prédictions (EV-38)
+
+Le contrat publie six champs par point de prévision. **Trois étaient déjà là**,
+sous un autre nom ou par normalisation :
+
+| Champ du contrat | Où il est |
+|---|---|
+| `timestamp` | `prediction.ts_cible` |
+| `predicted_consumption_kw` | `prediction.consumption_kw_predite` |
+| `model_version` | `modele.version`, par le join sur `prediction.modele_id` |
+
+`model_version` **n'est pas ajouté** comme colonne : c'est exactement la même
+valeur. Le service d'inférence la lit dans le registre MLflow et
+l'entraînement repose cette même version dans `modele` à la promotion. Une
+colonne de plus dupliquerait un fait déjà porté, avec le risque ordinaire des
+doublons : deux valeurs qui divergent et plus personne pour dire laquelle fait
+foi. `modele_id` reste donc `NOT NULL`, c'est ce qui garantit que le join
+aboutit.
+
+Un seul cas rend le join muet : un modèle chargé par chemin d'artefact au lieu
+d'un alias n'a pas d'entrée de registre, et le service retombe alors sur son
+identifiant interne, qui ne correspond à aucune ligne de `modele`. C'est un
+déploiement dégradé, pas le cas nominal.
+
+**Les trois qui manquaient vraiment**, ajoutés par la migration :
+
+| Colonne | Pourquoi elle n'existait nulle part |
+|---|---|
+| `generated_at` | les quatre `TIMESTAMPTZ` du schéma datent tous autre chose : `created_at` l'insertion, `ts_cible` l'heure prévue, `modele.date_entrainement` le run, `mesure.inserted_at` le chargement d'une mesure |
+| `lower_bound_kw`, `upper_bound_kw` | non reconstructibles : la bande vaut `valeur ± 1.96 × residual_std × √step`, et `residual_std` est un tag de version MLflow sans colonne dans `modele`, tandis que `step` se compte depuis la dernière mesure observée, origine que rien ne conserve |
+
+`created_at` est le faux ami de la série : l'écart avec l'heure réelle de
+production est de quelques millisecondes quand l'archivage suit la prévision,
+et se creuse dès qu'il est rejoué, mis en lot ou repris après incident.
+
+Les bornes sont **nullables** : le service rend `null` quand le tag
+`residual_std` manque, et forcer une valeur ferait passer « pas d'intervalle »
+pour « intervalle de largeur nulle », c'est-à-dire une prévision annoncée comme
+certaine.
+
+La clé d'unicité `(modele_id, site_id, ts_cible)` du schéma v1.0 est
+**inchangée** : une prévision par modèle, site et instant cible, le job y
+reposant la plus fraîche.
 
 ## Utilisateurs de développement
 
