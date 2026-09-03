@@ -41,7 +41,7 @@ applications_predict_host: "predict.enervision.com"
 
 # Version deployee de chaque service : tag GHCR immuable d'un commit precis
 # (sha-<git-sha>). Un SHA distinct par service, mis a jour a chaque release.
-applications_front_sha: "sha-0000000000000000000000000000000000000001"
+applications_front_sha: "sha-72d59f0ed41bf24035899472929cfba8464b42f0"
 applications_api_sha: "sha-1111111111111111111111111111111111111111"
 applications_predict_sha: "sha-2222222222222222222222222222222222222222"
 

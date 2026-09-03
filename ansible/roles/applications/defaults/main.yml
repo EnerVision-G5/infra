@@ -4,12 +4,13 @@
 applications_dir: /opt/srv/applications
 
 # Registre d'images. Les images applicatives sont publiées sur le GHCR de
-# l'organisation par les pipelines des dépôts front / api / predict.
+# l'organisation par les pipelines des dépôts dashboard / api / predict.
 applications_registry: ghcr.io
 applications_image_namespace: "ghcr.io/enervision-g5"
 
-# Noms des images (repository GHCR, sans tag).
-applications_front_image_name: front
+# Noms des images (repository GHCR, sans tag). Ils suivent le nom du dépôt qui
+# publie l'image : le front est servi par le dépôt « dashboard », pas « front ».
+applications_front_image_name: dashboard
 applications_api_image_name: api
 applications_predict_image_name: predict
 
