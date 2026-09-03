@@ -1,4 +1,13 @@
 ---
+- name: Vérifier qu'au moins une application est activée
+  ansible.builtin.assert:
+    that:
+      - applications_services | length > 0
+    fail_msg: >-
+      applications_enabled ne référence aucune application connue. Catalogue :
+      {{ applications_services_catalog | map(attribute='name') | join(', ') }}.
+    quiet: true
+
 - name: Vérifier que chaque application référence un SHA versionné
   ansible.builtin.assert:
     that:
@@ -16,7 +25,7 @@
     that:
       - (applications_services | map(attribute='sha') | list | unique | length)
         == (applications_services | length)
-    fail_msg: "Front, API et Predict doivent utiliser chacun un SHA distinct."
+    fail_msg: "Chaque application activée doit utiliser un SHA distinct."
     quiet: true
 
 - name: Créer le répertoire racine des applications
