@@ -49,17 +49,48 @@ applications_networks:
 
 # Connexion applicative à la base (construite à partir des variables du rôle
 # timescaledb ; le mot de passe vient de group_vars chiffré avec ansible-vault).
+#
+# Deux dialectes, non interchangeables :
+#  - l'API ouvre la base avec SQLAlchemy asynchrone -> asyncpg ;
+#  - les jobs batch de predict (collector, etl, training) l'ouvrent en
+#    synchrone via psycopg. Le service serving, lui, ne touche pas la base.
 applications_api_database_url: >-
+  postgresql+asyncpg://{{ timescaledb_user }}:{{ timescaledb_password }}@timescaledb:5432/{{ timescaledb_db }}
+# Non consommé aujourd'hui (serving ne lit pas la base) : prêt pour le jour où
+# collector / etl / training seront déployés, avec le bon dialecte psycopg.
+applications_predict_database_url: >-
   postgresql+psycopg://{{ timescaledb_user }}:{{ timescaledb_password }}@timescaledb:5432/{{ timescaledb_db }}
-applications_predict_database_url: "{{ applications_api_database_url }}"
 
-# Réglages API non sensibles.
+# --------------------------------------------------------------------------
+# API — variables du fichier .env généré (api.env.j2). Noms des clés = ceux
+# lus par app/core/config.py (pydantic-settings, MAJUSCULES).
+# --------------------------------------------------------------------------
+applications_api_app_name: "EnerVision API"
 applications_api_environment: production
+applications_api_debug: false
+# true : les endpoints protégés exigent un JWT valide (défaut de l'API, et le
+# seul réglage acceptable en production).
+applications_api_auth_enabled: true
 applications_api_jwt_algorithm: HS256
 applications_api_access_token_expire_minutes: 60
+# applications_api_jwt_secret : OBLIGATOIRE, sans valeur par défaut. Émis en
+# JWT_SECRET, doit faire au moins 32 caractères sinon l'API refuse de
+# démarrer. Défini dans group_vars par indirection Vault.
 
-# applications_api_secret_key : OBLIGATOIRE — défini dans group_vars, chiffré
-# avec ansible-vault. Aucune valeur par défaut volontairement.
+# --------------------------------------------------------------------------
+# Predict (service serving) — variables du fichier .env généré
+# (predict.env.j2). La config predict est un YAML en couches
+# (conf/base.yaml + conf/${PREDICT_ENV}.yaml) ; le .env ne fournit que les
+# ${VARIABLE} que ce YAML résout dans l'environnement.
+# --------------------------------------------------------------------------
+applications_predict_env: production
+# Racine des partitions de variables produites par l'ETL. Chemin local en
+# dev, URI s3:// vers Garage en déploiement.
+applications_predict_storage_root: "data"
+applications_predict_mlflow_tracking_uri: "http://mlflow:5000"
+# Alias MLflow du modèle servi. Le déplacer dans le registre suffit à
+# promouvoir une version, sans redéployer le service.
+applications_predict_serving_model_uri: "models:/enervision_xgboost@champion"
 
 # Applications effectivement déployées. Filtre le catalogue ci-dessous : une
 # application absente de cette liste n'est ni configurée, ni tirée, ni démarrée.
