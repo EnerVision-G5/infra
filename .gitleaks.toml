@@ -1,0 +1,28 @@
+# Configuration gitleaks du dépôt infra.
+#
+# Les règles par défaut sont conservées : ce fichier ne les remplace pas, il
+# ajoute une seule exception, la plus étroite possible.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = """
+Tags d'images Docker de la forme sha-<40 hexadécimaux>.
+
+Ce sont les SHA de commits Git publics, produits par docker/metadata-action
+(type=sha,format=long) et versionnés à dessein : c'est le dépôt qui référence
+la version déployée de chaque application, jamais `latest`. Rien de secret,
+donc, mais 40 caractères hexadécimaux ont l'entropie d'une clé d'API et la
+règle generic-api-key les relève comme telle.
+
+L'exception porte sur ce seul motif, et non sur le fichier qui les contient :
+vars.yml continue d'être scanné, et un vrai secret qui y serait écrit en clair
+serait toujours détecté. Le script scripts/check-secrets.sh vérifie par
+ailleurs, nommément, que les variables sensibles n'y sont définies que par
+indirection Vault.
+"""
+regexTarget = "line"
+regexes = [
+  '''sha-[0-9a-f]{40}''',
+]

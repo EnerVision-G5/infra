@@ -1,7 +1,10 @@
 name: ci
 
+# Déclenchée uniquement par pull request : sur une branche de travail, chaque
+# push rejouait la CI sans que personne ne lise le résultat avant l'ouverture
+# de la PR. Conséquence assumée : un push direct sur une branche protégée
+# n'est plus testé, le passage par une PR devient la seule voie contrôlée.
 on:
-  push:
   pull_request:
 
 jobs:
