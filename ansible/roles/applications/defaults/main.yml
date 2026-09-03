@@ -39,7 +39,9 @@ applications_api_host: "api.enervision.com"
 applications_predict_host: "predict.enervision.com"
 
 # Ports internes exposés par chaque conteneur (cibles des services Traefik).
-applications_front_port: 80
+# Le front est servi par nginx-unprivileged (uid 101) : il ne peut pas prendre
+# un port < 1024, son nginx.conf écoute donc sur 8080 (cf. dépôt dashboard).
+applications_front_port: 8080
 applications_api_port: 8080
 applications_predict_port: 8000
 
