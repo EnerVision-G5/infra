@@ -1,22 +1,59 @@
 ---
+- name: Vérifier que la clé de signature des JWT est utilisable
+  ansible.builtin.assert:
+    that:
+      - applications_api_jwt_secret | default('') | length
+        >= applications_api_jwt_secret_min_length
+    fail_msg: >-
+      applications_api_jwt_secret est absente ou fait moins de
+      {{ applications_api_jwt_secret_min_length }} caractères. L'API refuse de
+      démarrer sans elle : le conteneur sortirait en erreur au lieu de servir.
+      La définir dans le vault, jamais en clair dans le dépôt.
+    quiet: true
+  no_log: true
+
+- name: Vérifier que les origines CORS ne sont pas permissives
+  ansible.builtin.assert:
+    that:
+      - applications_api_cors_allowed_origins | default('') | length > 0
+      - "'*' not in applications_api_cors_allowed_origins"
+    fail_msg: >-
+      applications_api_cors_allowed_origins doit lister les origines
+      autorisées. Un joker rendrait l'API lisible depuis n'importe quel site.
+    quiet: true
+
+- name: Restreindre la liste aux applications qui portent leur propre version
+  ansible.builtin.set_fact:
+    applications_versioned: >-
+      {{ applications_services | selectattr('versioned', 'defined')
+         | selectattr('versioned') | list }}
+
 - name: Vérifier que chaque application référence un SHA versionné
   ansible.builtin.assert:
     that:
       - item.sha | length > 0
     fail_msg: >-
-      L'application '{{ item.name }}' n'a pas de SHA défini. Renseigner
-      applications_{{ item.name }}_sha dans les variables versionnées du dépôt.
+      L'application '{{ item.name }}' n'a pas de SHA défini. Renseigner son
+      SHA dans les variables versionnées du dépôt. Une image jamais publiée
+      sur GHCR n'a pas de tag à déployer : publier d'abord depuis master.
     quiet: true
   loop: "{{ applications_services }}"
   loop_control:
     label: "{{ item.name }}"
 
-- name: Vérifier l'unicité des SHA (une version distincte par application)
+# L'unicité porte sur l'image complète, nom et tag, et non sur le seul SHA :
+# les services de predict sont publiés depuis un même dépôt, donc un même
+# commit leur donne le même tag sans qu'il s'agisse de la même image. Seuls
+# les services versionnés sont concernés, predict-cron réutilisant celle de
+# l'API par construction.
+- name: Vérifier l'unicité des images déployées
   ansible.builtin.assert:
     that:
-      - (applications_services | map(attribute='sha') | list | unique | length)
-        == (applications_services | length)
-    fail_msg: "Front, API et Predict doivent utiliser chacun un SHA distinct."
+      - (applications_versioned | map(attribute='image') | list | unique | length)
+        == (applications_versioned | length)
+    fail_msg: >-
+      Deux applications versionnées pointent la même image. Chacune doit avoir
+      la sienne, sans quoi une seule version se déploierait partout.
     quiet: true
 
 - name: Créer le répertoire racine des applications

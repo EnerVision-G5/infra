@@ -8,10 +8,15 @@ applications_dir: /opt/srv/applications
 applications_registry: ghcr.io
 applications_image_namespace: "ghcr.io/enervision-g5"
 
-# Noms des images (repository GHCR, sans tag).
-applications_front_image_name: front
+# Noms des images (repository GHCR, sans tag). Relevés dans les workflows de
+# publication : le front est publié sous le nom de son dépôt (dashboard) et
+# les services de predict sous un sous-chemin de leur dépôt.
+applications_front_image_name: dashboard
 applications_api_image_name: api
-applications_predict_image_name: predict
+applications_predict_image_name: predict/serving
+applications_collector_image_name: predict/collector
+applications_etl_image_name: predict/etl
+
 
 # --------------------------------------------------------------------------
 # Versions déployées — un SHA distinct par application.
@@ -26,6 +31,8 @@ applications_predict_image_name: predict
 applications_front_sha: ""
 applications_api_sha: ""
 applications_predict_sha: ""
+applications_collector_sha: ""
+applications_etl_sha: ""
 
 # Domaines publics (routage Traefik). Surchargeables dans group_vars.
 applications_front_host: "app.enervision.com"
@@ -36,15 +43,37 @@ applications_predict_host: "predict.enervision.com"
 applications_front_port: 80
 applications_api_port: 8080
 applications_predict_port: 8000
+# Cadence du job de rafraîchissement des prédictions, en secondes. Toutes les
+# heures : la fraîcheur assumée par l'équipe est d'au plus une heure.
+applications_predict_cron_period_seconds: 3600
+
+# Cadence de l'ETL d'imputation, en secondes.
+applications_etl_period_seconds: 3600
+
+# Connexions applicatives des tâches de données. Distinctes de celle de l'API
+# pour que chacune puisse recevoir son propre compte si l'équipe cloisonne les
+# droits plus tard : le collecteur écrit les mesures brutes, l'ETL les colonnes
+# d'imputation, et aucun des deux ne touche à l'authentification.
+applications_collector_database_url: "{{ applications_api_database_url }}"
+applications_etl_database_url: "{{ applications_api_database_url }}"
+
+# Source des mesures interrogée par le collecteur.
+# applications_mock_api_base_url : OBLIGATOIRE, à définir dans group_vars.
+applications_mock_api_base_url: ""
 
 # Réseaux Docker externes requis par la stack applicative (créés si absents).
 #   proxy_network : exposition via Traefik
 #   db_network    : accès à TimescaleDB (api, predict)
 #   ml_network    : appels internes api <-> predict
+# Réseaux du schéma d'architecture v4. Créés s'ils sont absents ; chaque
+# application ne s'attache qu'à ceux dont elle a besoin, dans son compose.
 applications_networks:
   - proxy_network
+  - api_network
   - db_network
+  - storage_network
   - ml_network
+  - monitoring_network
 
 # Connexion applicative à la base (construite à partir des variables du rôle
 # timescaledb ; le mot de passe vient de group_vars chiffré avec ansible-vault).
@@ -57,8 +86,25 @@ applications_api_environment: production
 applications_api_jwt_algorithm: HS256
 applications_api_access_token_expire_minutes: 60
 
-# applications_api_secret_key : OBLIGATOIRE — défini dans group_vars, chiffré
-# avec ansible-vault. Aucune valeur par défaut volontairement.
+# applications_api_jwt_secret : OBLIGATOIRE — défini dans group_vars, chiffré
+# avec ansible-vault. Vide ici volontairement : une valeur par défaut, même
+# factice, se déploierait en production sans que personne ne s'en aperçoive.
+# L'API refuse de démarrer sous 32 caractères, le rôle le vérifie avant.
+applications_api_jwt_secret: ""
+
+# Longueur minimale exigée, alignée sur JWT_SECRET_MIN_LENGTH de l'API
+# (api/app/core/config.py).
+applications_api_jwt_secret_min_length: 32
+
+# Origines autorisées par CORS, séparées par des virgules. Par défaut la seule
+# origine du front. Aucune valeur permissive : jamais de "*", qui rendrait
+# l'API lisible par n'importe quel site.
+applications_api_cors_allowed_origins: "https://{{ applications_front_host }}"
+
+# Service d'inférence, joint sur ml_network par le job de prédiction.
+applications_predict_url: "http://enervision-predict:{{ applications_predict_port }}"
+applications_predict_horizon_hours: 24
+applications_predict_timeout_seconds: 10
 
 # Description normalisée des applications, consommée par les tasks. Le nom sert
 # aussi de sous-dossier et de préfixe de template (<name>.compose.yml.j2,
@@ -67,9 +113,29 @@ applications_services:
   - name: front
     image: "{{ applications_image_namespace }}/{{ applications_front_image_name }}:{{ applications_front_sha }}"
     sha: "{{ applications_front_sha }}"
+    versioned: true
   - name: api
     image: "{{ applications_image_namespace }}/{{ applications_api_image_name }}:{{ applications_api_sha }}"
     sha: "{{ applications_api_sha }}"
+    versioned: true
   - name: predict
     image: "{{ applications_image_namespace }}/{{ applications_predict_image_name }}:{{ applications_predict_sha }}"
     sha: "{{ applications_predict_sha }}"
+    versioned: true
+  # Collecte des mesures brutes toutes les minutes (service au long cours).
+  - name: collector
+    image: "{{ applications_image_namespace }}/{{ applications_collector_image_name }}:{{ applications_collector_sha }}"
+    sha: "{{ applications_collector_sha }}"
+    versioned: true
+  # Imputation des mesures trouées, lancée par cron dans le conteneur.
+  - name: etl
+    image: "{{ applications_image_namespace }}/{{ applications_etl_image_name }}:{{ applications_etl_sha }}"
+    sha: "{{ applications_etl_sha }}"
+    versioned: true
+  # Rafraîchissement horaire des prédictions. Réutilise l'image de l'API :
+  # le job vit dans son code (app.jobs.predict_refresh), il n'a donc ni image
+  # ni version propres, d'où versioned: false.
+  - name: predict-cron
+    image: "{{ applications_image_namespace }}/{{ applications_api_image_name }}:{{ applications_api_sha }}"
+    sha: "{{ applications_api_sha }}"
+    versioned: false

@@ -39,11 +39,30 @@ applications_front_host: "app.enervision.com"
 applications_api_host: "api.enervision.com"
 applications_predict_host: "predict.enervision.com"
 
+# Origines autorisées à appeler l'API depuis un navigateur. Le front est servi
+# sur une autre origine que l'API : sans cette liste, le navigateur bloque
+# toutes ses requêtes.
+applications_api_cors_allowed_origins: "https://{{ applications_front_host }}"
+
 # Version deployee de chaque service : tag GHCR immuable d'un commit precis
 # (sha-<git-sha>). Un SHA distinct par service, mis a jour a chaque release.
-applications_front_sha: "sha-0000000000000000000000000000000000000001"
-applications_api_sha: "sha-1111111111111111111111111111111111111111"
-applications_predict_sha: "sha-2222222222222222222222222222222222222222"
+# ATTENTION : ces tags viennent de publications faites depuis `master`. Les
+# workflows `cd` des dépôts ne se déclenchent que sur push vers master
+# (`on: push: branches: [master]`) : aucune image n'a jamais été publiée
+# depuis develop. Les valeurs ci-dessous sont les derniers commits dont un run
+# `cd` a réussi, relevés par `gh run view --json headSha`. Le format du tag est
+# celui de docker/metadata-action, `type=sha,format=long`.
+#
+# Ces tags n'ont PAS pu être confirmés auprès de l'API des packages GHCR :
+# le jeton disponible n'a pas le scope `read:packages`. Ils sont déduits des
+# runs de publication, pas lus dans le registre.
+applications_front_sha: "sha-72d59f0ed41bf24035899472929cfba8464b42f0"
+applications_api_sha: "sha-b4ea56e4a006ffd1237d68365e666ca6b1998679"
+applications_predict_sha: "sha-3f5ed22030ef868cf7196c43405be4e627d8eb80"
+applications_collector_sha: "sha-f3b30657b69b15fe11007ceaab4bc228728d16e5"
+# etl et serving sont publiés depuis le même dépôt : un même commit leur donne
+# le même tag, sur deux images distinctes.
+applications_etl_sha: "sha-3f5ed22030ef868cf7196c43405be4e627d8eb80"
 
 # DOCKER
 docker_external_networks:
