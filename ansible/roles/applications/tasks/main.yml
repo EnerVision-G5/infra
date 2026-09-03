@@ -11,6 +11,7 @@
       La définir dans le vault, jamais en clair dans le dépôt.
     quiet: true
   no_log: true
+  when: "'api' in applications_enabled"
 
 - name: Vérifier que les origines CORS ne sont pas permissives
   ansible.builtin.assert:
@@ -21,39 +22,44 @@
       applications_api_cors_allowed_origins doit lister les origines
       autorisées. Un joker rendrait l'API lisible depuis n'importe quel site.
     quiet: true
+  when: "'api' in applications_enabled"
 
-- name: Restreindre la liste aux applications qui portent leur propre version
-  ansible.builtin.set_fact:
-    applications_versioned: >-
-      {{ applications_services | selectattr('versioned', 'defined')
-         | selectattr('versioned') | list }}
+- name: Vérifier qu'au moins une application est activée
+  ansible.builtin.assert:
+    that:
+      - applications_services | length > 0
+    fail_msg: >-
+      applications_enabled ne référence aucune application connue. Catalogue :
+      {{ applications_services_catalog | map(attribute='name') | join(', ') }}.
+    quiet: true
 
 - name: Vérifier que chaque application référence un SHA versionné
   ansible.builtin.assert:
     that:
       - item.sha | length > 0
     fail_msg: >-
-      L'application '{{ item.name }}' n'a pas de SHA défini. Renseigner son
-      SHA dans les variables versionnées du dépôt. Une image jamais publiée
-      sur GHCR n'a pas de tag à déployer : publier d'abord depuis master.
+      L'application '{{ item.name }}' n'a pas de SHA défini. Renseigner
+      applications_{{ item.name }}_sha dans les variables versionnées du dépôt.
     quiet: true
   loop: "{{ applications_services }}"
   loop_control:
     label: "{{ item.name }}"
 
-# L'unicité porte sur l'image complète, nom et tag, et non sur le seul SHA :
-# les services de predict sont publiés depuis un même dépôt, donc un même
-# commit leur donne le même tag sans qu'il s'agisse de la même image. Seuls
-# les services versionnés sont concernés, predict-cron réutilisant celle de
-# l'API par construction.
-- name: Vérifier l'unicité des images déployées
+# Les applications qui empruntent l'image d'une autre en sont exclues :
+# predict-cron porte le job de l'API et suit sa version par construction.
+# L'unicité porte donc sur les seules applications ayant leur propre image.
+- name: Restreindre le contrôle d'unicité aux applications à image propre
+  ansible.builtin.set_fact:
+    applications_own_image: >-
+      {{ applications_services
+         | rejectattr('shares_image_with', 'defined') | list }}
+
+- name: Vérifier l'unicité des SHA (une version distincte par application)
   ansible.builtin.assert:
     that:
-      - (applications_versioned | map(attribute='image') | list | unique | length)
-        == (applications_versioned | length)
-    fail_msg: >-
-      Deux applications versionnées pointent la même image. Chacune doit avoir
-      la sienne, sans quoi une seule version se déploierait partout.
+      - (applications_own_image | map(attribute='sha') | list | unique | length)
+        == (applications_own_image | length)
+    fail_msg: "Chaque application activée doit utiliser un SHA distinct."
     quiet: true
 
 - name: Créer le répertoire racine des applications
@@ -154,3 +160,47 @@
   loop: "{{ applications_services }}"
   loop_control:
     label: "{{ item.name }}"
+
+# --------------------------------------------------------------------------
+# Rattrapage daté du collector : un timer systemd qui rejoue la fenêtre
+# glissante chaque nuit. Séparé du poller (compose) : ce n'est pas un
+# processus long mais un `docker run --rm` ponctuel.
+# --------------------------------------------------------------------------
+- name: Installer les unités systemd du rattrapage collector
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - collector-backfill.service
+    - collector-backfill.timer
+  when: applications_collector_backfill_active | bool
+  notify: Reload systemd
+
+- name: Activer et planifier le rattrapage collector
+  ansible.builtin.systemd_service:
+    name: collector-backfill.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: applications_collector_backfill_active | bool
+
+- name: Retirer le rattrapage collector quand il est désactivé
+  ansible.builtin.systemd_service:
+    name: collector-backfill.timer
+    enabled: false
+    state: stopped
+  failed_when: false
+  when: not (applications_collector_backfill_active | bool)
+
+- name: Retirer les unités systemd du rattrapage collector quand il est désactivé
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}"
+    state: absent
+  loop:
+    - collector-backfill.service
+    - collector-backfill.timer
+  when: not (applications_collector_backfill_active | bool)
+  notify: Reload systemd

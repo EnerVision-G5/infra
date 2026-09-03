@@ -1,14 +1,12 @@
 # Déployé par le rôle Ansible "applications" — ne pas éditer sur l'hôte.
-# Rafraîchissement horaire des prédictions. Réutilise l'image de l'API : le
-# job vit dans son code (app.jobs.predict_refresh), il n'a donc ni image ni
-# version propres et suit celle de l'API.
+# Rafraîchissement des prédictions (kind: worker).
+#
+# Porté par l'image de l'API : le job vit dans son code
+# (app.jobs.predict_refresh), il n'a donc ni image ni version propres.
 #
 # Conteneur dédié plutôt qu'ordonnanceur embarqué dans l'API : celle-ci reste
-# sans état, et le job est rejouable à la main sans la redémarrer.
-#
-# Le conteneur reste en vie et son entrypoint attend l'heure suivante. Le code
-# de sortie du job est journalisé sans arrêter la boucle : une panne isolée ne
-# doit pas laisser le service mort jusqu'à la prochaine intervention.
+# sans état, et le job est rejouable à la main sans la redémarrer. Pas de
+# port, pas de route Traefik.
 services:
   predict-cron:
     image: {{ applications_image_namespace }}/{{ applications_api_image_name }}:{{ applications_api_sha }}
@@ -17,6 +15,10 @@ services:
 
     entrypoint: ["/bin/sh", "-c"]
     command:
+      # Le job rend un code non nul quand tous les sites ont échoué. Il est
+      # journalisé sans arrêter la boucle : une panne du service d'inférence
+      # ne doit pas laisser le rafraîchissement mort jusqu'à la prochaine
+      # intervention.
       - >-
         while :; do
         python -m app.jobs.predict_refresh
@@ -30,6 +32,12 @@ services:
     networks:
       - db_network
       - ml_network
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
 networks:
   db_network:

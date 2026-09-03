@@ -96,7 +96,8 @@ dans le dépôt.
 | `ghcr_username`                      | `vault_ghcr_username`                   | `applications` |
 | `ghcr_token`                         | `vault_ghcr_token`                      | `applications` |
 | `monitoring_grafana_admin_password`  | `vault_monitoring_grafana_admin_password` | `monitoring` |
-| `applications_api_secret_key`        | `vault_applications_api_secret_key`     | `applications` |
+| `applications_api_jwt_secret`        | `vault_applications_api_secret_key`     | `applications` |
+| `ansible_password`                   | `vault_ansible_ssh_password`            | connexion SSH à l'hôte (`hosts.yml`) |
 
 Pour ajouter un secret : le déclarer dans `vault.yml` sous `vault_<nom>`
 (`ansible-vault edit`), puis ajouter la ligne `<nom>: "{{ vault_<nom> }}"` dans

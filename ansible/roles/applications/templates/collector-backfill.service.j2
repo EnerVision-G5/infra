@@ -1,0 +1,17 @@
+# Déployé par le rôle Ansible "applications" — ne pas éditer sur l'hôte.
+[Unit]
+Description=EnerVision — rattrapage daté de la collecte (backfill)
+Documentation=https://github.com/EnerVision-G5/predict
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# Même image que le poller. --date aujourd'hui + --days {{ applications_collector_backfill_days }}
+# rejoue la fenêtre glissante ; l'insertion ON CONFLICT DO NOTHING garantit
+# qu'aucune ligne déjà écrite au fil de l'eau n'est touchée.
+ExecStart=/bin/sh -c '/usr/bin/docker run --rm \
+  --network db_network \
+  --env-file {{ applications_dir }}/collector/.env \
+  {{ applications_collector_image }} \
+  --date "$(date -u +%%F)" --days {{ applications_collector_backfill_days }}'

@@ -39,29 +39,49 @@ applications_front_host: "app.enervision.com"
 applications_api_host: "api.enervision.com"
 applications_predict_host: "predict.enervision.com"
 
-# Origines autorisées à appeler l'API depuis un navigateur. Le front est servi
-# sur une autre origine que l'API : sans cette liste, le navigateur bloque
-# toutes ses requêtes.
-applications_api_cors_allowed_origins: "https://{{ applications_front_host }}"
+# --- API : contenu du .env généré (api.env.j2) ----------------------------
+# DATABASE_URL et JWT_SECRET ne sont PAS ici : l'URL est construite par le rôle
+# depuis les variables timescaledb, le secret vient du Vault (plus bas).
+applications_api_app_name: "EnerVision API"
+applications_api_environment: "production"
+applications_api_debug: false
+applications_api_auth_enabled: true
+applications_api_jwt_algorithm: "HS256"
+applications_api_access_token_expire_minutes: 60
+
+# --- Predict (serving) : contenu du .env généré (predict.env.j2) ----------
+# À ajuster avant d'ajouter "predict" à applications_enabled.
+applications_predict_env: "production"
+applications_predict_storage_root: "s3://enervision-features"
+applications_predict_mlflow_tracking_uri: "http://mlflow:5000"
+applications_predict_serving_model_uri: "models:/enervision_xgboost@champion"
+
+# --- Collector (poller + rattrapage) : contenu du .env généré (collector.env.j2)
+# DATABASE_URL est construite par le rôle (dialecte psycopg).
+applications_collector_env: "production"
+# URL de l'API Mock IoT source des mesures — À RENSEIGNER.
+applications_collector_mock_api_url: "http://10.105.200.45:8000"
+applications_collector_backfill_enabled: true
+applications_collector_backfill_on_calendar: "*-*-* 02:30:00"
+applications_collector_backfill_days: 2
+
+# Applications deployees. predict (serving) n'a pas encore d'image publiee.
+# Rajouter "predict" ici quand son image sera disponible.
+applications_enabled:
+  - front
+  - api
+  - collector
+  - etl
+  - predict-cron
 
 # Version deployee de chaque service : tag GHCR immuable d'un commit precis
 # (sha-<git-sha>). Un SHA distinct par service, mis a jour a chaque release.
-# ATTENTION : ces tags viennent de publications faites depuis `master`. Les
-# workflows `cd` des dépôts ne se déclenchent que sur push vers master
-# (`on: push: branches: [master]`) : aucune image n'a jamais été publiée
-# depuis develop. Les valeurs ci-dessous sont les derniers commits dont un run
-# `cd` a réussi, relevés par `gh run view --json headSha`. Le format du tag est
-# celui de docker/metadata-action, `type=sha,format=long`.
-#
-# Ces tags n'ont PAS pu être confirmés auprès de l'API des packages GHCR :
-# le jeton disponible n'a pas le scope `read:packages`. Ils sont déduits des
-# runs de publication, pas lus dans le registre.
 applications_front_sha: "sha-72d59f0ed41bf24035899472929cfba8464b42f0"
 applications_api_sha: "sha-b4ea56e4a006ffd1237d68365e666ca6b1998679"
+# predict/serving et predict/etl sont publiés depuis le même dépôt : un même
+# commit leur donne le même tag, sur deux images distinctes.
 applications_predict_sha: "sha-3f5ed22030ef868cf7196c43405be4e627d8eb80"
 applications_collector_sha: "sha-f3b30657b69b15fe11007ceaab4bc228728d16e5"
-# etl et serving sont publiés depuis le même dépôt : un même commit leur donne
-# le même tag, sur deux images distinctes.
 applications_etl_sha: "sha-3f5ed22030ef868cf7196c43405be4e627d8eb80"
 
 # DOCKER
@@ -87,4 +107,8 @@ ghcr_token: "{{ vault_ghcr_token }}"
 
 monitoring_grafana_admin_password: "{{ vault_monitoring_grafana_admin_password }}"
 
-applications_api_secret_key: "{{ vault_applications_api_secret_key }}"
+# Émis en JWT_SECRET dans api.env. >= 32 caractères, sinon l'API refuse de
+# démarrer. La clé Vault garde son nom historique (vault_applications_api_secret_key)
+# pour ne pas avoir à rechiffrer le Vault ; générer une valeur avec
+#   python -c "import secrets; print(secrets.token_urlsafe(48))"
+applications_api_jwt_secret: "{{ vault_applications_api_secret_key }}"

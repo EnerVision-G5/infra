@@ -1,0 +1,13 @@
+# Déployé par le rôle Ansible "applications" — ne pas éditer sur l'hôte.
+[Unit]
+Description=EnerVision — planification du rattrapage de la collecte
+
+[Timer]
+OnCalendar={{ applications_collector_backfill_on_calendar }}
+# Rejoue l'occurrence manquée si la VM était éteinte à l'heure prévue.
+Persistent=true
+# Étale le déclenchement pour ne pas taper la source à la seconde près.
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

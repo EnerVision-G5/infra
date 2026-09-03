@@ -4,13 +4,13 @@
 applications_dir: /opt/srv/applications
 
 # Registre d'images. Les images applicatives sont publiées sur le GHCR de
-# l'organisation par les pipelines des dépôts front / api / predict.
+# l'organisation par les pipelines des dépôts dashboard / api / predict.
 applications_registry: ghcr.io
 applications_image_namespace: "ghcr.io/enervision-g5"
 
-# Noms des images (repository GHCR, sans tag). Relevés dans les workflows de
-# publication : le front est publié sous le nom de son dépôt (dashboard) et
-# les services de predict sous un sous-chemin de leur dépôt.
+# Noms des images (repository GHCR, sans tag). Ils suivent le nom du dépôt qui
+# publie l'image ; le dépôt predict, multi-services, publie sous un chemin
+# imbriqué (predict/<service>).
 applications_front_image_name: dashboard
 applications_api_image_name: api
 applications_predict_image_name: predict/serving
@@ -42,30 +42,11 @@ applications_predict_host: "predict.enervision.com"
 applications_front_port: 80
 applications_api_port: 8080
 applications_predict_port: 8000
-# Cadence du job de rafraîchissement des prédictions, en secondes. Toutes les
-# heures : la fraîcheur assumée par l'équipe est d'au plus une heure.
-applications_predict_cron_period_seconds: 3600
-
-# Cadence de l'ETL d'imputation, en secondes.
-applications_etl_period_seconds: 3600
-
-# Connexions applicatives des tâches de données. Distinctes de celle de l'API
-# pour que chacune puisse recevoir son propre compte si l'équipe cloisonne les
-# droits plus tard : le collecteur écrit les mesures brutes, l'ETL les colonnes
-# d'imputation, et aucun des deux ne touche à l'authentification.
-applications_collector_database_url: "{{ applications_api_database_url }}"
-applications_etl_database_url: "{{ applications_api_database_url }}"
-
-# Source des mesures interrogée par le collecteur.
-# applications_mock_api_base_url : OBLIGATOIRE, à définir dans group_vars.
-applications_mock_api_base_url: ""
 
 # Réseaux Docker externes requis par la stack applicative (créés si absents).
 #   proxy_network : exposition via Traefik
 #   db_network    : accès à TimescaleDB (api, predict)
 #   ml_network    : appels internes api <-> predict
-# Réseaux du schéma d'architecture v4. Créés s'ils sont absents ; chaque
-# application ne s'attache qu'à ceux dont elle a besoin, dans son compose.
 applications_networks:
   - proxy_network
   - api_network
@@ -76,65 +57,144 @@ applications_networks:
 
 # Connexion applicative à la base (construite à partir des variables du rôle
 # timescaledb ; le mot de passe vient de group_vars chiffré avec ansible-vault).
+#
+# Deux dialectes, non interchangeables :
+#  - l'API ouvre la base avec SQLAlchemy asynchrone -> asyncpg ;
+#  - les jobs batch de predict (collector, etl, training) l'ouvrent en
+#    synchrone via psycopg. Le service serving, lui, ne touche pas la base.
 applications_api_database_url: >-
+  postgresql+asyncpg://{{ timescaledb_user }}:{{ timescaledb_password }}@timescaledb:5432/{{ timescaledb_db }}
+# Non consommé aujourd'hui (serving ne lit pas la base) : prêt pour le jour où
+# collector / etl / training seront déployés, avec le bon dialecte psycopg.
+applications_predict_database_url: >-
   postgresql+psycopg://{{ timescaledb_user }}:{{ timescaledb_password }}@timescaledb:5432/{{ timescaledb_db }}
-applications_predict_database_url: "{{ applications_api_database_url }}"
 
-# Réglages API non sensibles.
+# --------------------------------------------------------------------------
+# API — variables du fichier .env généré (api.env.j2). Noms des clés = ceux
+# lus par app/core/config.py (pydantic-settings, MAJUSCULES).
+# --------------------------------------------------------------------------
+applications_api_app_name: "EnerVision API"
 applications_api_environment: production
+applications_api_debug: false
+# true : les endpoints protégés exigent un JWT valide (défaut de l'API, et le
+# seul réglage acceptable en production).
+applications_api_auth_enabled: true
 applications_api_jwt_algorithm: HS256
 applications_api_access_token_expire_minutes: 60
 
-# applications_api_jwt_secret : OBLIGATOIRE — défini dans group_vars, chiffré
-# avec ansible-vault. Vide ici volontairement : une valeur par défaut, même
-# factice, se déploierait en production sans que personne ne s'en aperçoive.
-# L'API refuse de démarrer sous 32 caractères, le rôle le vérifie avant.
-applications_api_jwt_secret: ""
-
-# Longueur minimale exigée, alignée sur JWT_SECRET_MIN_LENGTH de l'API
-# (api/app/core/config.py).
+# Longueur minimale exigée de la clé de signature, alignée sur
+# JWT_SECRET_MIN_LENGTH de l'API (api/app/core/config.py). Vérifiée par le
+# rôle avant tout déploiement : l'API refuserait de démarrer.
 applications_api_jwt_secret_min_length: 32
 
-# Origines autorisées par CORS, séparées par des virgules. Par défaut la seule
-# origine du front. Aucune valeur permissive : jamais de "*", qui rendrait
-# l'API lisible par n'importe quel site.
+# Origines autorisées à appeler l'API depuis un navigateur, séparées par des
+# virgules. Le front est servi sur une autre origine : sans cette liste, le
+# navigateur bloque toutes ses requêtes. Jamais de joker, l'API le refuse au
+# démarrage et le rôle avant elle.
 applications_api_cors_allowed_origins: "https://{{ applications_front_host }}"
+# applications_api_jwt_secret : OBLIGATOIRE, sans valeur par défaut. Émis en
+# JWT_SECRET, doit faire au moins 32 caractères sinon l'API refuse de
+# démarrer. Défini dans group_vars par indirection Vault.
 
-# Service d'inférence, joint sur ml_network par le job de prédiction.
+# --------------------------------------------------------------------------
+# Predict (service serving) — variables du fichier .env généré
+# (predict.env.j2). La config predict est un YAML en couches
+# (conf/base.yaml + conf/${PREDICT_ENV}.yaml) ; le .env ne fournit que les
+# ${VARIABLE} que ce YAML résout dans l'environnement.
+# --------------------------------------------------------------------------
+applications_predict_env: production
+# Racine des partitions de variables produites par l'ETL. Chemin local en
+# dev, URI s3:// vers Garage en déploiement.
+applications_predict_storage_root: "data"
+applications_predict_mlflow_tracking_uri: "http://mlflow:5000"
+# Alias MLflow du modèle servi. Le déplacer dans le registre suffit à
+# promouvoir une version, sans redéployer le service.
+applications_predict_serving_model_uri: "models:/enervision_xgboost@champion"
+
+# --------------------------------------------------------------------------
+# Collector (dépôt predict, service predict/collector) — job d'ingestion de
+# la couche brute (table `mesure`). Une seule image, deux usages :
+#  - poller : processus long, interroge /current au fil de l'eau (compose) ;
+#  - backfill : rattrapage daté, rejoué chaque nuit par un timer systemd.
+# Tous deux insèrent en ON CONFLICT DO NOTHING : aucun doublon.
+# --------------------------------------------------------------------------
+applications_collector_env: production
+applications_collector_database_url: "{{ applications_predict_database_url }}"
+# API Mock IoT : source des mesures. OBLIGATOIRE, sans repli utilisable.
+# ETL d'imputation : complète les mesures trouées sans réécrire la valeur
+# brute (ADR-006). Écrit les colonnes d'imputation et mesure_exclu.
+applications_etl_env: production
+applications_etl_database_url: "{{ applications_predict_database_url }}"
+applications_etl_period_seconds: 3600
+
+# Job de rafraîchissement des prédictions, porté par l'image de l'API. Toutes
+# les heures : la fraîcheur assumée par l'équipe est d'au plus une heure.
+applications_predict_cron_period_seconds: 3600
 applications_predict_url: "http://enervision-predict:{{ applications_predict_port }}"
 applications_predict_horizon_hours: 24
 applications_predict_timeout_seconds: 10
 
-# Description normalisée des applications, consommée par les tasks. Le nom sert
-# aussi de sous-dossier et de préfixe de template (<name>.compose.yml.j2,
-# <name>.env.j2).
-applications_services:
+applications_collector_mock_api_url: "http://mock-iot:8000"
+applications_collector_image: >-
+  {{ applications_image_namespace }}/{{ applications_collector_image_name }}:{{ applications_collector_sha }}
+# Rattrapage nocturne. --days 2 : recouvre toujours la veille et l'avant-veille,
+# de quoi combler un poller coupé quelques heures sans jamais rien réécrire.
+applications_collector_backfill_enabled: true
+applications_collector_backfill_on_calendar: "*-*-* 02:30:00"
+applications_collector_backfill_days: 2
+# Vrai quand le rattrapage doit exister sur l'hôte (collector activé ET
+# rattrapage demandé). Pilote la pose/dépose des unités systemd.
+applications_collector_backfill_active: >-
+  {{ ('collector' in applications_enabled) and (applications_collector_backfill_enabled | bool) }}
+
+# Applications effectivement déployées. Filtre le catalogue ci-dessous : une
+# application absente de cette liste n'est ni configurée, ni tirée, ni démarrée.
+# Permet de déployer un sous-ensemble sans dépendre d'une image pas encore
+# publiée. Surchargeable dans group_vars.
+applications_enabled:
+  - front
+  - api
+  - predict
+  - collector
+
+# Catalogue de toutes les applications connues. Le nom sert aussi de
+# sous-dossier et de préfixe de template (<name>.compose.yml.j2, <name>.env.j2).
+#
+# kind :
+#   web    — service HTTP exposé derrière Traefik (front, api) ;
+#   worker — processus long sans port ni route (poller du collector). Son
+#            compose n'a ni label Traefik ni healthcheck HTTP, et les tâches
+#            de rattrapage systemd ne s'appliquent qu'à lui.
+applications_services_catalog:
   - name: front
+    kind: web
     image: "{{ applications_image_namespace }}/{{ applications_front_image_name }}:{{ applications_front_sha }}"
     sha: "{{ applications_front_sha }}"
-    versioned: true
   - name: api
+    kind: web
     image: "{{ applications_image_namespace }}/{{ applications_api_image_name }}:{{ applications_api_sha }}"
     sha: "{{ applications_api_sha }}"
-    versioned: true
   - name: predict
+    kind: web
     image: "{{ applications_image_namespace }}/{{ applications_predict_image_name }}:{{ applications_predict_sha }}"
     sha: "{{ applications_predict_sha }}"
-    versioned: true
-  # Collecte des mesures brutes toutes les minutes (service au long cours).
   - name: collector
+    kind: worker
     image: "{{ applications_image_namespace }}/{{ applications_collector_image_name }}:{{ applications_collector_sha }}"
     sha: "{{ applications_collector_sha }}"
-    versioned: true
-  # Imputation des mesures trouées, lancée par cron dans le conteneur.
   - name: etl
+    kind: worker
     image: "{{ applications_image_namespace }}/{{ applications_etl_image_name }}:{{ applications_etl_sha }}"
     sha: "{{ applications_etl_sha }}"
-    versioned: true
-  # Rafraîchissement horaire des prédictions. Réutilise l'image de l'API :
-  # le job vit dans son code (app.jobs.predict_refresh), il n'a donc ni image
-  # ni version propres, d'où versioned: false.
+  # Porté par l'image de l'API : le job vit dans son code
+  # (app.jobs.predict_refresh) et n'a donc ni image ni version propres. D'où
+  # shares_image_with, qui l'exclut du contrôle d'unicité des versions.
   - name: predict-cron
+    kind: worker
     image: "{{ applications_image_namespace }}/{{ applications_api_image_name }}:{{ applications_api_sha }}"
     sha: "{{ applications_api_sha }}"
-    versioned: false
+    shares_image_with: api
+
+# Liste consommée par les tasks : le catalogue restreint aux applications
+# activées, dans l'ordre du catalogue.
+applications_services: "{{ applications_services_catalog | selectattr('name', 'in', applications_enabled) | list }}"
