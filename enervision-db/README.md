@@ -60,6 +60,8 @@ docker compose exec timescaledb psql -U enervision -d enervision -c "
 | `initdb/03_mesure_imputation.sql` | colonnes d'imputation sur `mesure` (EV-08) |
 | `initdb/04_app_user_auth.sql` | comptes locaux et rôles `reader` / `writer` (EV-12) |
 | `initdb/05_prediction_contrat.sql` | les trois champs du contrat absents de `prediction` (EV-38) |
+| `initdb/06_ingestion_etat.sql` | état courant de la collecte, une ligne par site (EV-18) |
+| `initdb/07_mesure_quality_source.sql` | qui a qualifié la mesure, source ou ETL (EV-18) |
 
 Les scripts d'`initdb/` ne sont pas rejoués sur une base déjà démarrée : les
 migrations sont idempotentes, il suffit de les appliquer à la main.
@@ -130,6 +132,37 @@ certaine.
 La clé d'unicité `(modele_id, site_id, ts_cible)` du schéma v1.0 est
 **inchangée** : une prévision par modèle, site et instant cible, le job y
 reposant la plus fraîche.
+
+### Fraîcheur d'ingestion (EV-18)
+
+`mesure.inserted_at` dit quand une ligne est entrée, et cela suffit **tant
+qu'il y a des lignes**. Un capteur mort en produit encore — nulles, avec leurs
+`null_reasons` — donc `max(inserted_at)` avance et l'agrégat fonctionne. Mais
+un poller arrêté, une source qui répond 500 ou une base injoignable n'en
+produisent aucune : `max(inserted_at)` se fige alors exactement comme si le
+site avait cessé d'exister. Aucune requête sur `mesure` ne distingue « la
+collecte a tourné et il n'y avait rien » de « la collecte n'a pas tourné ».
+
+`ingestion_etat` porte cette distinction, **une ligne par site**, écrite en
+UPSERT par les deux points d'entrée du collecteur :
+
+| Colonne | Ce qu'elle permet de voir |
+|---|---|
+| `last_attempt_at` / `last_success_at` | égales, la collecte va bien ; écartées, elle tourne et échoue ; les deux figées, le collecteur ne tourne plus |
+| `last_data_lag_s` | âge de la mesure servie par la source, mesuré par le collecteur — pas reconstructible depuis `inserted_at - ts`, qui mélange retard de source et retard d'écriture |
+| `consecutive_failures` | l'à-coup contre la panne installée ; remis à zéro par un succès |
+| `source` | `poller` ou `backfill` : un rattrapage manuel ne doit pas se faire passer pour une collecte vivante |
+
+Pas de journal par tick : sept sites à la minute feraient dix mille lignes par
+jour à purger, pour une question qui est au présent. L'historique du retard est
+déjà dans le journal du collecteur, et EV-30 le porte vers Prometheus.
+
+`mesure.quality_source` répond au second angle mort. `data_quality` est
+`NOT NULL DEFAULT 'good'` : le collecteur retombe sur `good` quand la source se
+tait, et c'est l'ETL qui repose la vraie qualification. Sans marqueur, une
+journée fraîchement collectée affiche **0 % de mesures dégradées** et le site
+paraît parfait. `quality_source` vaut `source` tant que l'ETL n'est pas passé,
+`etl` ensuite — et le `DO UPDATE` de l'ETL la repose à chaque rejeu.
 
 ## Utilisateurs de développement
 
