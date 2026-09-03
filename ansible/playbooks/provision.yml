@@ -38,7 +38,3 @@
     - role: monitoring
       tags:
         - monitoring
-
-    - role: applications
-      tags:
-        - applications

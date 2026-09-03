@@ -4,6 +4,7 @@
 .env.*
 !.env.example
 vault_pass*
+.vault_pass*
 *.vault
 secrets.yml
 

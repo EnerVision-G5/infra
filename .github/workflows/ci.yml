@@ -24,8 +24,44 @@ jobs:
       - name: Install Ansible collections
         run: ansible-galaxy collection install -r ansible/requirements.yml
 
+      # Le mot de passe du Vault n'est jamais commité. S'il est fourni via le
+      # secret GitHub Actions ANSIBLE_VAULT_PASSWORD, il est écrit hors du dépôt
+      # (RUNNER_TEMP) le temps du job pour lever les avertissements de
+      # déchiffrement ; sinon la validation reste possible sans lui.
+      - name: Préparer le mot de passe Vault (si défini)
+        env:
+          VAULT_PW: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
+        run: |
+          if [ -n "$VAULT_PW" ]; then
+            install -m 600 /dev/null "$RUNNER_TEMP/vault-pass"
+            printf '%s' "$VAULT_PW" > "$RUNNER_TEMP/vault-pass"
+            echo "ANSIBLE_VAULT_PASSWORD_FILE=$RUNNER_TEMP/vault-pass" >> "$GITHUB_ENV"
+          fi
+
       - name: Ansible syntax check - provision
         run: ansible-playbook --syntax-check ansible/playbooks/provision.yml
 
+      - name: Ansible syntax check - deploy
+        run: ansible-playbook --syntax-check ansible/playbooks/deploy.yml
+
       - name: Ansible lint
         run: ansible-lint ansible/
+
+  secrets:
+    name: Absence de secret en clair
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          version=8.21.2
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin gitleaks
+
+      - name: Scan des secrets (Vault chiffré + arbre + historique Git)
+        run: bash scripts/check-secrets.sh

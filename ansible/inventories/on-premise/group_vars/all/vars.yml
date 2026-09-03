@@ -1,0 +1,71 @@
+---
+# Variables non sensibles du groupe "all".
+#
+# Les secrets (mots de passe, tokens, identifiants) NE SONT PAS ici : ils sont
+# stockés chiffrés dans `vault.yml` sous des noms préfixés `vault_*`, et
+# rattachés ci-dessous aux variables consommées par les rôles. Un seul endroit
+# à mettre à jour, et `git` ne voit jamais les valeurs en clair.
+#
+# Exécuter les playbooks avec `--ask-vault-pass` ou `--vault-password-file`.
+
+# SSH
+ssh_port: 2222
+
+# TRAEFIK
+traefik_domain: "traefik.enervision.com"
+traefik_entrypoint: "web"
+traefik_certresolver: "letsencrypt"
+
+acme_email: "admin@enervision.com"
+
+# GARAGE
+garage_s3_host: "s3.enervision.com"
+garage_web_host: "web.enervision.com"
+garage_ui_host: "garage.enervision.com"
+garage_s3_region: "garage"
+garage_s3_root_domain: ".s3.enervision.com"
+garage_web_root_domain: ".web.enervision.com"
+
+# TIMESCALEDB
+timescaledb_db: "enervision"
+timescaledb_user: "enervision"
+
+# MONITORING
+monitoring_grafana_host: "grafana.enervision.com"
+monitoring_grafana_admin_user: "admin"
+
+# APPLICATIONS (Front / API / Predict)
+applications_front_host: "app.enervision.com"
+applications_api_host: "api.enervision.com"
+applications_predict_host: "predict.enervision.com"
+
+# Version deployee de chaque service : tag GHCR immuable d'un commit precis
+# (sha-<git-sha>). Un SHA distinct par service, mis a jour a chaque release.
+applications_front_sha: "sha-0000000000000000000000000000000000000001"
+applications_api_sha: "sha-1111111111111111111111111111111111111111"
+applications_predict_sha: "sha-2222222222222222222222222222222222222222"
+
+# DOCKER
+docker_external_networks:
+  - "proxy_network"
+  - "api_network"
+  - "db_network"
+  - "storage_network"
+  - "ml_network"
+  - "monitoring_network"
+
+# --------------------------------------------------------------------------
+# Rattachement des secrets — valeurs réelles dans vault.yml (chiffré).
+# --------------------------------------------------------------------------
+garage_rpc_secret: "{{ vault_garage_rpc_secret }}"
+garage_admin_token: "{{ vault_garage_admin_token }}"
+garage_metrics_token: "{{ vault_garage_metrics_token }}"
+
+timescaledb_password: "{{ vault_timescaledb_password }}"
+
+ghcr_username: "{{ vault_ghcr_username }}"
+ghcr_token: "{{ vault_ghcr_token }}"
+
+monitoring_grafana_admin_password: "{{ vault_monitoring_grafana_admin_password }}"
+
+applications_api_secret_key: "{{ vault_applications_api_secret_key }}"

@@ -1,0 +1,11 @@
+- name: Deploy applications
+  hosts: application_servers
+  become: true
+
+  # Les secrets (identifiants GHCR, mot de passe base, clé API) proviennent du
+  # Vault chiffré `group_vars/all/vault.yml`. Lancer avec `--ask-vault-pass` ou
+  # `--vault-password-file`.
+  roles:
+    - role: applications
+      tags:
+        - applications
