@@ -1,0 +1,44 @@
+# Déployé par le rôle Ansible "applications" — ne pas éditer sur l'hôte.
+# ETL d'imputation EnerVision (kind: worker).
+#
+# Complète les mesures trouées sans jamais réécrire la valeur brute que le
+# collector a déposée (ADR-006). Pas de port, pas de route Traefik.
+#
+# Tâche périodique et non processus long : elle traite un lot puis rend la
+# main. La boucle est dans l'entrypoint plutôt que dans un timer systemd,
+# contrairement au rattrapage du collector : l'imputation n'a pas de date à
+# recevoir, elle reprend simplement là où elle s'était arrêtée.
+services:
+  etl:
+    image: {{ applications_image_namespace }}/{{ applications_etl_image_name }}:{{ applications_etl_sha }}
+    container_name: enervision-etl
+    # Le conteneur héberge la boucle : s'il sort, plus rien n'impute.
+    restart: unless-stopped
+
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      # Un lot en échec est journalisé sans interrompre la boucle : sinon une
+      # panne passagère laisserait l'imputation morte jusqu'à la prochaine
+      # intervention.
+      - >-
+        while :; do
+        python -m etl || echo "ETL en echec, nouvelle tentative au prochain cycle";
+        sleep {{ applications_etl_period_seconds }};
+        done
+
+    env_file:
+      - .env
+
+    networks:
+      - db_network
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+networks:
+  db_network:
+    external: true
+    name: db_network

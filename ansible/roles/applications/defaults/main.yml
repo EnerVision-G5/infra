@@ -13,8 +13,9 @@ applications_image_namespace: "ghcr.io/enervision-g5"
 # imbriqué (predict/<service>).
 applications_front_image_name: dashboard
 applications_api_image_name: api
-applications_predict_image_name: predict
+applications_predict_image_name: predict/serving
 applications_collector_image_name: predict/collector
+applications_etl_image_name: predict/etl
 
 # --------------------------------------------------------------------------
 # Versions déployées — un SHA distinct par application.
@@ -30,6 +31,7 @@ applications_front_sha: ""
 applications_api_sha: ""
 applications_predict_sha: ""
 applications_collector_sha: ""
+applications_etl_sha: ""
 
 # Domaines publics (routage Traefik). Surchargeables dans group_vars.
 applications_front_host: "app.enervision.com"
@@ -47,8 +49,11 @@ applications_predict_port: 8000
 #   ml_network    : appels internes api <-> predict
 applications_networks:
   - proxy_network
+  - api_network
   - db_network
+  - storage_network
   - ml_network
+  - monitoring_network
 
 # Connexion applicative à la base (construite à partir des variables du rôle
 # timescaledb ; le mot de passe vient de group_vars chiffré avec ansible-vault).
@@ -76,6 +81,17 @@ applications_api_debug: false
 applications_api_auth_enabled: true
 applications_api_jwt_algorithm: HS256
 applications_api_access_token_expire_minutes: 60
+
+# Longueur minimale exigée de la clé de signature, alignée sur
+# JWT_SECRET_MIN_LENGTH de l'API (api/app/core/config.py). Vérifiée par le
+# rôle avant tout déploiement : l'API refuserait de démarrer.
+applications_api_jwt_secret_min_length: 32
+
+# Origines autorisées à appeler l'API depuis un navigateur, séparées par des
+# virgules. Le front est servi sur une autre origine : sans cette liste, le
+# navigateur bloque toutes ses requêtes. Jamais de joker, l'API le refuse au
+# démarrage et le rôle avant elle.
+applications_api_cors_allowed_origins: "https://{{ applications_front_host }}"
 # applications_api_jwt_secret : OBLIGATOIRE, sans valeur par défaut. Émis en
 # JWT_SECRET, doit faire au moins 32 caractères sinon l'API refuse de
 # démarrer. Défini dans group_vars par indirection Vault.
@@ -105,6 +121,19 @@ applications_predict_serving_model_uri: "models:/enervision_xgboost@champion"
 applications_collector_env: production
 applications_collector_database_url: "{{ applications_predict_database_url }}"
 # API Mock IoT : source des mesures. OBLIGATOIRE, sans repli utilisable.
+# ETL d'imputation : complète les mesures trouées sans réécrire la valeur
+# brute (ADR-006). Écrit les colonnes d'imputation et mesure_exclu.
+applications_etl_env: production
+applications_etl_database_url: "{{ applications_predict_database_url }}"
+applications_etl_period_seconds: 3600
+
+# Job de rafraîchissement des prédictions, porté par l'image de l'API. Toutes
+# les heures : la fraîcheur assumée par l'équipe est d'au plus une heure.
+applications_predict_cron_period_seconds: 3600
+applications_predict_url: "http://enervision-predict:{{ applications_predict_port }}"
+applications_predict_horizon_hours: 24
+applications_predict_timeout_seconds: 10
+
 applications_collector_mock_api_url: "http://mock-iot:8000"
 applications_collector_image: >-
   {{ applications_image_namespace }}/{{ applications_collector_image_name }}:{{ applications_collector_sha }}
@@ -153,6 +182,18 @@ applications_services_catalog:
     kind: worker
     image: "{{ applications_image_namespace }}/{{ applications_collector_image_name }}:{{ applications_collector_sha }}"
     sha: "{{ applications_collector_sha }}"
+  - name: etl
+    kind: worker
+    image: "{{ applications_image_namespace }}/{{ applications_etl_image_name }}:{{ applications_etl_sha }}"
+    sha: "{{ applications_etl_sha }}"
+  # Porté par l'image de l'API : le job vit dans son code
+  # (app.jobs.predict_refresh) et n'a donc ni image ni version propres. D'où
+  # shares_image_with, qui l'exclut du contrôle d'unicité des versions.
+  - name: predict-cron
+    kind: worker
+    image: "{{ applications_image_namespace }}/{{ applications_api_image_name }}:{{ applications_api_sha }}"
+    sha: "{{ applications_api_sha }}"
+    shares_image_with: api
 
 # Liste consommée par les tasks : le catalogue restreint aux applications
 # activées, dans l'ordre du catalogue.
