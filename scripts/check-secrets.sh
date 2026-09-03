@@ -52,6 +52,7 @@ secret_vars=(
   ghcr_token
   monitoring_grafana_admin_password
   applications_api_secret_key
+  ansible_password
 )
 
 for var in "${secret_vars[@]}"; do
