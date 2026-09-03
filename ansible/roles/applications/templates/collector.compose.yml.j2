@@ -1,0 +1,35 @@
+# Déployé par le rôle Ansible "applications" — ne pas éditer sur l'hôte.
+# Collector EnerVision — poller d'ingestion (kind: worker).
+#
+# Processus long : il interroge /current sur chaque site à cadence fixe et
+# écrit au fil de l'eau. Pas de port, pas de route Traefik ; sa santé se lit
+# dans son journal. Le rattrapage daté, lui, est un timer systemd (voir le
+# rôle), pas un service de ce compose.
+services:
+  poller:
+    image: {{ applications_image_namespace }}/{{ applications_collector_image_name }}:{{ applications_collector_sha }}
+    container_name: enervision-collector-poller
+    # Processus long : s'il sort, c'est un incident, il doit repartir.
+    # unless-stopped et non always : un arrêt volontaire de l'exploitant n'est
+    # pas défait au redémarrage du démon Docker.
+    restart: unless-stopped
+    entrypoint: ["python", "-m", "collector.poller"]
+
+    env_file:
+      - .env
+
+    networks:
+      - db_network
+
+    # Un processus qui tourne des semaines finit par remplir le disque de la
+    # VM : on borne la rotation des journaux.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+networks:
+  db_network:
+    external: true
+    name: db_network
