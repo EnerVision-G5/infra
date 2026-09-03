@@ -1,0 +1,32 @@
+# Déployé par le rôle Ansible "applications" — ne pas éditer sur l'hôte.
+# ETL d'imputation EnerVision — complète les mesures trouées sans jamais
+# réécrire la valeur brute (ADR-006). Image épinglée sur applications_etl_sha.
+#
+# Tâche planifiée et non service au long cours : elle traite un lot puis rend
+# la main. Le conteneur reste en vie et c'est son entrypoint qui attend
+# l'heure suivante, plutôt qu'un cron de l'hôte : la cadence reste ainsi
+# décrite ici, versionnée avec le reste du déploiement.
+services:
+  etl:
+    image: {{ applications_image_namespace }}/{{ applications_etl_image_name }}:{{ applications_etl_sha }}
+    container_name: enervision-etl
+    restart: unless-stopped
+
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        while :; do
+        python -m etl || echo "ETL en echec, nouvelle tentative au prochain cycle";
+        sleep {{ applications_etl_period_seconds }};
+        done
+
+    env_file:
+      - .env
+
+    networks:
+      - db_network
+
+networks:
+  db_network:
+    external: true
+    name: db_network

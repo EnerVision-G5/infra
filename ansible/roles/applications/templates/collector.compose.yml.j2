@@ -1,0 +1,25 @@
+# Déployé par le rôle Ansible "applications" — ne pas éditer sur l'hôte.
+# Collecteur EnerVision — interroge l'API Mock IoT et dépose les mesures
+# brutes dans TimescaleDB. Image épinglée sur applications_collector_sha.
+#
+# Service au long cours et non tâche planifiée : il interroge /current toutes
+# les minutes, et sa cadence est portée par son propre code (ADR-005).
+# Aucun label Traefik : rien à exposer, il n'écoute sur aucun port.
+services:
+  collector:
+    image: {{ applications_image_namespace }}/{{ applications_collector_image_name }}:{{ applications_collector_sha }}
+    container_name: enervision-collector
+    restart: unless-stopped
+
+    command: ["python", "-m", "collector.poller"]
+
+    env_file:
+      - .env
+
+    networks:
+      - db_network
+
+networks:
+  db_network:
+    external: true
+    name: db_network

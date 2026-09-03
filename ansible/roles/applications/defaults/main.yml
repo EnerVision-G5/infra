@@ -17,7 +17,6 @@ applications_predict_image_name: predict/serving
 applications_collector_image_name: predict/collector
 applications_etl_image_name: predict/etl
 
-
 # --------------------------------------------------------------------------
 # Versions déployées — un SHA distinct par application.
 #
