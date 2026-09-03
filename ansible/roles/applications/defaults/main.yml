@@ -61,10 +61,18 @@ applications_api_access_token_expire_minutes: 60
 # applications_api_secret_key : OBLIGATOIRE — défini dans group_vars, chiffré
 # avec ansible-vault. Aucune valeur par défaut volontairement.
 
-# Description normalisée des applications, consommée par les tasks. Le nom sert
-# aussi de sous-dossier et de préfixe de template (<name>.compose.yml.j2,
-# <name>.env.j2).
-applications_services:
+# Applications effectivement déployées. Filtre le catalogue ci-dessous : une
+# application absente de cette liste n'est ni configurée, ni tirée, ni démarrée.
+# Permet de déployer front + api sans dépendre d'une image predict encore
+# inexistante. Surchargeable dans group_vars.
+applications_enabled:
+  - front
+  - api
+  - predict
+
+# Catalogue de toutes les applications connues. Le nom sert aussi de
+# sous-dossier et de préfixe de template (<name>.compose.yml.j2, <name>.env.j2).
+applications_services_catalog:
   - name: front
     image: "{{ applications_image_namespace }}/{{ applications_front_image_name }}:{{ applications_front_sha }}"
     sha: "{{ applications_front_sha }}"
@@ -74,3 +82,7 @@ applications_services:
   - name: predict
     image: "{{ applications_image_namespace }}/{{ applications_predict_image_name }}:{{ applications_predict_sha }}"
     sha: "{{ applications_predict_sha }}"
+
+# Liste consommée par les tasks : le catalogue restreint aux applications
+# activées, dans l'ordre du catalogue.
+applications_services: "{{ applications_services_catalog | selectattr('name', 'in', applications_enabled) | list }}"

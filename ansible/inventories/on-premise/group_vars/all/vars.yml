@@ -39,10 +39,17 @@ applications_front_host: "app.enervision.com"
 applications_api_host: "api.enervision.com"
 applications_predict_host: "predict.enervision.com"
 
+# Applications deployees. predict n'a pas encore d'image publiee sur GHCR :
+# on ne deploie que front + api pour ne pas dependre d'une image absente.
+# Rajouter "predict" ici quand son image est disponible.
+applications_enabled:
+  - front
+  - api
+
 # Version deployee de chaque service : tag GHCR immuable d'un commit precis
 # (sha-<git-sha>). Un SHA distinct par service, mis a jour a chaque release.
 applications_front_sha: "sha-72d59f0ed41bf24035899472929cfba8464b42f0"
-applications_api_sha: "sha-1111111111111111111111111111111111111111"
+applications_api_sha: "sha-b4ea56e4a006ffd1237d68365e666ca6b1998679"
 applications_predict_sha: "sha-2222222222222222222222222222222222222222"
 
 # DOCKER
