@@ -71,6 +71,30 @@ Un rôle seul peut être rejoué via ses tags :
 ansible-playbook ansible/playbooks/provision.yml --tags monitoring --ask-vault-pass
 ```
 
+### Configuration applicative
+
+Chaque application reçoit son `.env`, rendu depuis `<nom>.env.j2` et monté par
+`env_file` dans son `compose.yml`. Aucune application ne lit sa configuration
+au build : les images sont épinglées par SHA et déployées telles quelles sur
+des environnements dont les domaines diffèrent.
+
+Deux réglages doivent **concorder**, sinon le navigateur bloque les appels du
+dashboard vers l'API malgré une configuration correcte d'un seul côté :
+
+| Variable | Application | Rôle |
+| --- | --- | --- |
+| `applications_front_csp_connect_src` | front | Autorise le navigateur à **émettre** l'appel (directive `connect-src` de la CSP) |
+| `applications_api_cors_allowed_origins` | api | Autorise le navigateur à **lire** la réponse (CORS) |
+
+Les deux dérivent de `applications_front_host` et `applications_api_host` :
+surcharger un domaine dans `group_vars` les emmène toutes les deux, sans écrire
+d'adresse en double. Le rôle refuse une valeur vide ou contenant un joker, pour
+l'une comme pour l'autre.
+
+Ces valeurs ne sont pas des secrets — ce sont des adresses de service, que le
+dashboard republie d'ailleurs en clair sur `/config.js`. **Rien de sensible ne
+doit passer par la configuration du front.**
+
 ## Secrets
 
 Il n'y a plus de Key Vault. Tous les mots de passe, tokens et identifiants

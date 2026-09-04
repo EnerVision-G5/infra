@@ -7,6 +7,12 @@ services:
     container_name: enervision-front
     restart: unless-stopped
 
+    # Configuration lue au démarrage du conteneur — adresses de service et
+    # origines autorisées par la CSP. L'image est construite une fois par
+    # commit et déployée telle quelle : rien de tout cela n'est figé au build.
+    env_file:
+      - .env
+
     networks:
       - proxy_network
 
