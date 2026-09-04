@@ -251,6 +251,11 @@ applications_collector_database_url: "{{ applications_predict_database_url }}"
 applications_etl_env: production
 applications_etl_database_url: "{{ applications_predict_database_url }}"
 applications_etl_period_seconds: 3600
+# Journées reprises à chaque cycle, en remontant depuis le jour même. 2 et non
+# 1 : la journée en cours n'est complète qu'au lendemain, et sans reprise ses
+# dernières heures resteraient non imputées pour toujours — l'entraînement
+# apprendrait alors une fin de journée systématiquement tronquée.
+applications_etl_window_days: 2
 
 # --------------------------------------------------------------------------
 # Training (dépôt predict, service predict/training) — réentraînement du
