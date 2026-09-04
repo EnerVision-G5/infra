@@ -25,6 +25,26 @@ le pipeline ou par un `ansible-playbook`.
 | `monitoring`  | Prometheus, Grafana, Loki + Promtail, node_exporter, cAdvisor   |
 | `applications` | Déploiement Front / API / Predict — un `compose.yml` par application, images GHCR épinglées par SHA |
 
+## Schéma de la base
+
+Le rôle `timescaledb` déploie le moteur, vide. Le schéma appartient au dépôt
+`api` : il vit dans ses migrations Alembic, embarquées dans l'image de l'API.
+
+Le rôle `applications` les joue à chaque déploiement, par un `docker run`
+ponctuel sur l'image déjà épinglée, avant de (re)démarrer les conteneurs :
+
+```
+docker run --rm --network db_network --env-file /opt/srv/applications/api/.env     ghcr.io/enervision-g5/api:<sha> alembic upgrade head
+```
+
+`upgrade head` est idempotent : un déploiement sans nouvelle révision ne
+change rien. Un échec arrête le déploiement plutôt que de laisser démarrer
+des conteneurs sur un schéma incomplet.
+
+Les scripts `enervision-db/initdb/*.sql` ne servent plus qu'à la base locale
+de développement. Ils ne sont pas déployés, et toute évolution du schéma se
+fait désormais par une révision Alembic dans le dépôt `api`.
+
 ## CI
 
 `.github/workflows/ci.yml` s'exécute à chaque push et sur chaque pull request :

@@ -147,6 +147,35 @@
     label: "{{ item.name }}"
   when: item.name in applications_changed
 
+# --------------------------------------------------------------------------
+# Schéma de la base. Les migrations vivent dans l'image de l'API
+# (alembic/versions) et sont jouées ici, avant que le moindre conteneur ne
+# s'y connecte : un conteneur démarré sur un schéma absent répondrait 500 sur
+# chaque lecture. `upgrade head` est idempotent, le rejouer à chaque
+# déploiement ne coûte qu'un aller-retour quand il n'y a rien à appliquer.
+#
+# Un `docker run` ponctuel plutôt qu'un service du compose : la migration doit
+# aboutir AVANT le démarrage, et son échec doit arrêter le déploiement.
+# --------------------------------------------------------------------------
+- name: Appliquer les migrations Alembic
+  ansible.builtin.command:
+    argv:
+      - docker
+      - run
+      - --rm
+      - --network
+      - db_network
+      - --env-file
+      - "{{ applications_dir }}/api/.env"
+      - "{{ applications_image_namespace }}/{{ applications_api_image_name }}:{{ applications_api_sha }}"
+      - alembic
+      - upgrade
+      - head
+  # Sans marqueur exploitable : alembic ne dit pas en code de sortie s'il a
+  # appliqué quelque chose, et une migration jouée est un changement.
+  changed_when: true
+  when: "'api' in applications_enabled"
+
 - name: (Re)déployer chaque application via son compose dédié
   community.docker.docker_compose_v2:
     project_src: "{{ applications_dir }}/{{ item.name }}"

@@ -1,5 +1,12 @@
 # EnerVision — Base TimescaleDB (schéma figé v1.0)
 
+> **Base locale de développement uniquement.** Le schéma déployé vient des
+> migrations Alembic du dépôt `api` (`alembic/versions/`), jouées par le rôle
+> Ansible `applications`. La révision `0001_schema_v1` reprend l'état produit
+> par les scripts `initdb/` ci-dessous, à l'identique. Une évolution du schéma
+> se fait là-bas, plus ici : ces fichiers ne sont plus rejoués nulle part
+> ailleurs que sur un volume Docker neuf en local.
+
 Cible stable pour l'ETL et l'API. Périmètre gelé : `mesure` (hypertable),
 `mesure_exclu`, `prediction`, `modele`, `app_user` (+ `site`, référentiel
 requis pour les clés étrangères).
