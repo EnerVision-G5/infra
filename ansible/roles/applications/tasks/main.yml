@@ -63,6 +63,28 @@
   when:
     - "'mlflow' in applications_enabled"
     - applications_mlflow_expose | bool
+- name: Vérifier que les origines de la CSP du front ne sont pas permissives
+  ansible.builtin.assert:
+    that:
+      - applications_front_csp_connect_src | default('') | length > 0
+      - "'*' not in applications_front_csp_connect_src"
+    fail_msg: >-
+      applications_front_csp_connect_src doit lister les origines que le
+      dashboard a le droit d'appeler. Vide, le navigateur bloque tous ses
+      appels à l'API ; avec un joker, la directive ne protège plus rien.
+    quiet: true
+  when: "'front' in applications_enabled"
+
+- name: Vérifier que l'adresse de l'API vue par le navigateur est renseignée
+  ansible.builtin.assert:
+    that:
+      - applications_front_api_base_url | default('') | length > 0
+    fail_msg: >-
+      applications_front_api_base_url doit porter l'hôte public de l'API.
+      Sans elle, le dashboard affiche une erreur de configuration au lieu
+      d'appeler quoi que ce soit.
+    quiet: true
+  when: "'front' in applications_enabled"
 
 - name: Vérifier qu'au moins une application est activée
   ansible.builtin.assert:

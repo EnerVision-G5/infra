@@ -8,7 +8,7 @@ monitoring_prometheus_image: "prom/prometheus:v3.1.0"
 monitoring_loki_image: "grafana/loki:3.3.2"
 monitoring_promtail_image: "grafana/promtail:3.3.2"
 monitoring_node_exporter_image: "prom/node-exporter:v1.8.2"
-monitoring_cadvisor_image: "gcr.io/cadvisor/cadvisor:v0.49.1"
+monitoring_cadvisor_image: "gcr.io/cadvisor/cadvisor:v0.52.1"
 
 # Rétention des séries Prometheus
 monitoring_prometheus_retention: "15d"

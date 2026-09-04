@@ -107,7 +107,7 @@ applications_enabled:
 # Version deployee de chaque image : tag GHCR immuable d'un commit precis
 # (sha-<git-sha>), mis a jour a chaque release.
 applications_front_sha: "sha-72d59f0ed41bf24035899472929cfba8464b42f0"
-applications_api_sha: "sha-b4ea56e4a006ffd1237d68365e666ca6b1998679"
+applications_api_sha: "sha-665d1e5a553e7cecbf4e19e5f9d01228fdf061a3"
 # serving, training et etl sont publiés depuis le dépôt predict : un même
 # commit leur donne le même tag, sur trois images distinctes. C'est le couple
 # image:tag qui identifie une version, et le rôle contrôle son unicité là.

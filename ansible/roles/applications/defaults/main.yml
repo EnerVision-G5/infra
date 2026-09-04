@@ -132,11 +132,58 @@ applications_api_access_token_expire_minutes: 60
 # rôle avant tout déploiement : l'API refuserait de démarrer.
 applications_api_jwt_secret_min_length: 32
 
+# Schéma sous lequel le navigateur joint réellement les applications. Dérivé de
+# l'entrypoint Traefik plutôt qu'écrit en dur : aujourd'hui traefik_entrypoint
+# vaut "web", c'est-à-dire le port 80 en clair (voir role traefik,
+# --entrypoints.web.address=:80), et les labels TLS des routeurs applicatifs
+# sont encore commentés.
+#
+# Une origine annoncée en https alors que le service répond en http n'est pas
+# une approximation : c'est une origine DIFFÉRENTE pour le navigateur. Le CORS
+# et la CSP la refuseraient tous les deux, et l'erreur affichée parlerait de
+# blocage cross-origin sans dire que seul le schéma cloche.
+#
+# Le jour où l'on passe l'entrypoint à "websecure" et où l'on décommente les
+# labels TLS, cette variable suit toute seule et les origines avec elle.
+applications_public_scheme: "{{ 'https' if (traefik_entrypoint | default('web')) == 'websecure' else 'http' }}"
+
 # Origines autorisées à appeler l'API depuis un navigateur, séparées par des
 # virgules. Le front est servi sur une autre origine : sans cette liste, le
 # navigateur bloque toutes ses requêtes. Jamais de joker, l'API le refuse au
 # démarrage et le rôle avant elle.
-applications_api_cors_allowed_origins: "https://{{ applications_front_host }}"
+applications_api_cors_allowed_origins: "{{ applications_public_scheme }}://{{ applications_front_host }}"
+
+# --------------------------------------------------------------------------
+# Configuration du front, lue au DÉMARRAGE du conteneur et non figée au build.
+#
+# L'image du dashboard est construite une seule fois par commit, épinglée par
+# applications_front_sha, puis déployée telle quelle : y figer des domaines
+# imposerait une image par environnement, et le SHA ne suffirait plus à savoir
+# ce qui tourne. Le front lit donc sa configuration de l'environnement, comme
+# api et predict.
+#
+# Les deux variables ci-dessous dérivent des hôtes déjà déclarés plus haut, et
+# du schéma dérivé de l'entrypoint Traefik : aucun domaine ni schéma n'est
+# écrit deux fois, et une surcharge d'environnement les emmène toutes les
+# deux.
+# --------------------------------------------------------------------------
+
+# Origines que le navigateur a le droit d'appeler depuis le dashboard
+# (directive connect-src de sa CSP), séparées par des espaces. Symétrique de
+# applications_api_cors_allowed_origins : celle-ci autorise l'émission de la
+# requête, l'autre la lecture de la réponse. Les deux sont nécessaires.
+# Jamais de joker : il rendrait l'en-tête inutile.
+applications_front_csp_connect_src: "{{ applications_public_scheme }}://{{ applications_api_host }}"
+
+# Adresse de l'API métier, telle que le navigateur doit la joindre — donc
+# l'hôte public, pas le nom de service Docker : c'est le poste de l'utilisateur
+# qui émet l'appel, pas le conteneur du front.
+applications_front_api_base_url: "{{ applications_public_scheme }}://{{ applications_api_host }}"
+
+# Origine de la série prédite : api (défaut) ou fixture. fixture n'a de sens
+# qu'en environnement de démonstration, avant que des prédictions ne soient
+# archivées en base ; le dashboard affiche alors un bandeau qui le dit.
+applications_front_prediction_source: "api"
 # applications_api_jwt_secret : OBLIGATOIRE, sans valeur par défaut. Émis en
 # JWT_SECRET, doit faire au moins 32 caractères sinon l'API refuse de
 # démarrer. Défini dans group_vars par indirection Vault.
