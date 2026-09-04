@@ -106,15 +106,15 @@ applications_enabled:
 
 # Version deployee de chaque image : tag GHCR immuable d'un commit precis
 # (sha-<git-sha>), mis a jour a chaque release.
-applications_front_sha: "sha-72d59f0ed41bf24035899472929cfba8464b42f0"
+applications_front_sha: "sha-dadeb4781911fd464e24f2f41eccf178e7b52ffb"
 applications_api_sha: "sha-665d1e5a553e7cecbf4e19e5f9d01228fdf061a3"
 # serving, training et etl sont publiés depuis le dépôt predict : un même
 # commit leur donne le même tag, sur trois images distinctes. C'est le couple
 # image:tag qui identifie une version, et le rôle contrôle son unicité là.
-applications_serving_sha: "sha-3f5ed22030ef868cf7196c43405be4e627d8eb80"
-applications_training_sha: "sha-3f5ed22030ef868cf7196c43405be4e627d8eb80"
-applications_etl_sha: "sha-3f5ed22030ef868cf7196c43405be4e627d8eb80"
-applications_collector_sha: "sha-f3b30657b69b15fe11007ceaab4bc228728d16e5"
+applications_serving_sha: "sha-48709c643fd223e9e23326754c9609409e685189"
+applications_training_sha: "sha-da9407f5ad00560406ea4fc46d7a3d398610c452"
+applications_etl_sha: "sha-da9407f5ad00560406ea4fc46d7a3d398610c452"
+applications_collector_sha: "sha-48709c643fd223e9e23326754c9609409e685189"
 
 # DOCKER
 docker_external_networks:
