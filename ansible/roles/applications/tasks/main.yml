@@ -24,6 +24,45 @@
     quiet: true
   when: "'api' in applications_enabled"
 
+# L'ETL publie les partitions de variables, serving les relit et training les
+# apprend : sans identifiants, les trois démarrent, ne trouvent rien, et ne le
+# disent qu'à la première prévision demandée.
+- name: Vérifier que le stockage objet est joignable par les services predict
+  ansible.builtin.assert:
+    that:
+      - applications_predict_s3_access_key_id | default('') | length > 0
+      - applications_predict_s3_secret_access_key | default('') | length > 0
+    fail_msg: >-
+      applications_predict_storage_root désigne un stockage objet
+      ({{ applications_predict_storage_root }}) mais aucune clé Garage n'est
+      fournie. Définir applications_predict_s3_access_key_id et
+      applications_predict_s3_secret_access_key dans le vault (valeurs
+      produites par `garage key create`).
+    quiet: true
+  no_log: true
+  when:
+    - applications_predict_storage_root.startswith('s3://')
+    - applications_enabled
+      | intersect(['serving', 'training', 'etl']) | length > 0
+
+# Le registre décide du modèle servi : déplacer un alias change les prévisions
+# rendues aux clients. MLflow n'ayant aucune authentification propre, une
+# route sans middleware l'ouvrirait à qui connaît le domaine.
+- name: Vérifier que MLflow exposé est protégé par une authentification
+  ansible.builtin.assert:
+    that:
+      - applications_mlflow_basic_auth_users | default('') | length > 0
+    fail_msg: >-
+      applications_mlflow_expose demande une route Traefik vers le registre,
+      mais applications_mlflow_basic_auth_users est vide. Générer les
+      identifiants avec `htpasswd -nbB <utilisateur> '<mot de passe>'` et les
+      stocker dans le vault, ou laisser applications_mlflow_expose à false :
+      l'interface reste alors consultable par un tunnel SSH.
+    quiet: true
+  no_log: true
+  when:
+    - "'mlflow' in applications_enabled"
+    - applications_mlflow_expose | bool
 - name: Vérifier que les origines de la CSP du front ne sont pas permissives
   ansible.builtin.assert:
     that:
@@ -77,12 +116,18 @@
       {{ applications_services
          | rejectattr('shares_image_with', 'defined') | list }}
 
-- name: Vérifier l'unicité des SHA (une version distincte par application)
+# Sur la référence complète et non sur le seul SHA : le dépôt predict publie
+# serving, training, collector et etl depuis le même commit, qui leur donne à
+# toutes le même tag sur des images distinctes. Exiger un SHA distinct
+# interdirait de déployer deux de ces services au même niveau de code.
+- name: Vérifier l'unicité des images déployées (image:tag distinct)
   ansible.builtin.assert:
     that:
-      - (applications_own_image | map(attribute='sha') | list | unique | length)
-        == (applications_own_image | length)
-    fail_msg: "Chaque application activée doit utiliser un SHA distinct."
+      - (applications_own_image | map(attribute='image') | list
+         | unique | length) == (applications_own_image | length)
+    fail_msg: >-
+      Deux applications activées pointent la même image au même tag. C'est le
+      couple image:tag qui identifie une version déployée.
     quiet: true
 
 - name: Créer le répertoire racine des applications
@@ -129,6 +174,8 @@
     label: "{{ item.name }}"
   no_log: true
 
+# Y compris pour les traitements datés (kind: job) : leur compose n'est pas
+# démarré par ce rôle, mais c'est lui que le timer systemd exécute.
 - name: Générer le compose.yml de chaque application
   ansible.builtin.template:
     src: "{{ item.name }}.compose.yml.j2"
@@ -170,6 +217,9 @@
     label: "{{ item.name }}"
   when: item.name in applications_changed
 
+# Les traitements datés en sont exclus : ils n'ont rien à maintenir en vie, et
+# un `up` déclencherait un entraînement complet à chaque déploiement. Leur
+# image est tirée ci-dessus, leur déclenchement est un timer systemd.
 - name: (Re)déployer chaque application via son compose dédié
   community.docker.docker_compose_v2:
     project_src: "{{ applications_dir }}/{{ item.name }}"
@@ -183,6 +233,7 @@
   loop: "{{ applications_services }}"
   loop_control:
     label: "{{ item.name }}"
+  when: item.kind != 'job'
 
 # --------------------------------------------------------------------------
 # Rattrapage daté du collector : un timer systemd qui rejoue la fenêtre
@@ -226,4 +277,48 @@
     - collector-backfill.service
     - collector-backfill.timer
   when: not (applications_collector_backfill_active | bool)
+  notify: Reload systemd
+
+# --------------------------------------------------------------------------
+# Réentraînement du modèle : même schéma, sur le compose déposé plus haut.
+# Le timer est le seul à lancer l'image predict/training ; un déploiement ne
+# réapprend rien, il met à jour la version que le prochain run utilisera.
+# --------------------------------------------------------------------------
+- name: Installer les unités systemd du réentraînement
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - training.service
+    - training.timer
+  when: applications_training_active | bool
+  notify: Reload systemd
+
+- name: Activer et planifier le réentraînement
+  ansible.builtin.systemd_service:
+    name: training.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: applications_training_active | bool
+
+- name: Retirer le réentraînement quand il est désactivé
+  ansible.builtin.systemd_service:
+    name: training.timer
+    enabled: false
+    state: stopped
+  failed_when: false
+  when: not (applications_training_active | bool)
+
+- name: Retirer les unités systemd du réentraînement quand il est désactivé
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}"
+    state: absent
+  loop:
+    - training.service
+    - training.timer
+  when: not (applications_training_active | bool)
   notify: Reload systemd
