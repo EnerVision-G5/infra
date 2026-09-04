@@ -77,11 +77,11 @@ applications_enabled:
 # Version deployee de chaque service : tag GHCR immuable d'un commit precis
 # (sha-<git-sha>). Un SHA distinct par service, mis a jour a chaque release.
 applications_front_sha: "sha-72d59f0ed41bf24035899472929cfba8464b42f0"
-applications_api_sha: "sha-b4ea56e4a006ffd1237d68365e666ca6b1998679"
+applications_api_sha: "sha-665d1e5a553e7cecbf4e19e5f9d01228fdf061a3"
 # predict/serving et predict/etl sont publiés depuis le même dépôt : un même
 # commit leur donne le même tag, sur deux images distinctes.
-applications_predict_sha: "sha-3f5ed22030ef868cf7196c43405be4e627d8eb80"
-applications_collector_sha: "sha-f3b30657b69b15fe11007ceaab4bc228728d16e5"
+applications_predict_sha: "sha-48709c643fd223e9e23326754c9609409e685189"
+applications_collector_sha: "sha-48709c643fd223e9e23326754c9609409e685189"
 applications_etl_sha: "sha-3f5ed22030ef868cf7196c43405be4e627d8eb80"
 
 # DOCKER
