@@ -91,6 +91,20 @@ surcharger un domaine dans `group_vars` les emmène toutes les deux, sans écrir
 d'adresse en double. Le rôle refuse une valeur vide ou contenant un joker, pour
 l'une comme pour l'autre.
 
+Leur **schéma** dérive de `traefik_entrypoint`, il n'est jamais écrit en dur :
+
+| `traefik_entrypoint` | `applications_public_scheme` |
+| --- | --- |
+| `web` (port 80, valeur actuelle) | `http` |
+| `websecure` (port 443) | `https` |
+
+Ce n'est pas un détail cosmétique. Pour un navigateur, `http://app…` et
+`https://app…` sont deux **origines différentes** : annoncer l'une pendant que
+Traefik sert l'autre fait échouer le CORS et la CSP ensemble, avec un message
+de blocage cross-origin qui ne dit pas que seul le schéma cloche. Le jour où
+l'on bascule sur `websecure` — et où l'on décommente les labels TLS des
+routeurs applicatifs — les origines suivent d'elles-mêmes.
+
 Ces valeurs ne sont pas des secrets — ce sont des adresses de service, que le
 dashboard republie d'ailleurs en clair sur `/config.js`. **Rien de sensible ne
 doit passer par la configuration du front.**
