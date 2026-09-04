@@ -10,45 +10,57 @@ applications_image_namespace: "ghcr.io/enervision-g5"
 
 # Noms des images (repository GHCR, sans tag). Ils suivent le nom du dépôt qui
 # publie l'image ; le dépôt predict, multi-services, publie sous un chemin
-# imbriqué (predict/<service>).
+# imbriqué (predict/<service>). Le préfixe de variable suit alors le SERVICE
+# publié et non le dépôt : il n'existe pas d'image `predict`, mais quatre
+# images distinctes, dont serving et training.
 applications_front_image_name: dashboard
 applications_api_image_name: api
-applications_predict_image_name: predict/serving
+applications_serving_image_name: predict/serving
+applications_training_image_name: predict/training
 applications_collector_image_name: predict/collector
 applications_etl_image_name: predict/etl
 
 # --------------------------------------------------------------------------
-# Versions déployées — un SHA distinct par application.
+# Versions déployées — un SHA par image.
 #
 # Chaque valeur est le tag GHCR immuable d'un commit précis (généré par
 # docker/metadata-action : `sha-<git-sha>`). Ces variables sont VERSIONNÉES
 # dans le dépôt (group_vars/all.yml) et mises à jour à chaque release : c'est
 # le dépôt qui référence la version déployée, jamais `latest`.
 #
+# Deux images publiées par le même dépôt au même commit portent le même tag :
+# c'est le couple image:tag qui identifie une version, pas le SHA seul.
+#
 # Laissées vides ici volontairement pour forcer une définition explicite.
 # --------------------------------------------------------------------------
 applications_front_sha: ""
 applications_api_sha: ""
-applications_predict_sha: ""
+applications_serving_sha: ""
+applications_training_sha: ""
 applications_collector_sha: ""
 applications_etl_sha: ""
 
 # Domaines publics (routage Traefik). Surchargeables dans group_vars.
+# MLflow n'est pas dans cette liste par défaut : il n'a pas de route tant que
+# applications_mlflow_expose ne le demande pas (voir plus bas).
 applications_front_host: "app.enervision.com"
 applications_api_host: "api.enervision.com"
-applications_predict_host: "predict.enervision.com"
+applications_serving_host: "predict.enervision.com"
 
 # Ports internes exposés par chaque conteneur (cibles des services Traefik).
 # Le front est servi par nginx-unprivileged (uid 101) : il ne peut pas prendre
 # un port < 1024, son nginx.conf écoute donc sur 8080 (cf. dépôt dashboard).
 applications_front_port: 8080
 applications_api_port: 8080
-applications_predict_port: 8000
+applications_serving_port: 8000
+applications_mlflow_port: 5000
 
 # Réseaux Docker externes requis par la stack applicative (créés si absents).
-#   proxy_network : exposition via Traefik
-#   db_network    : accès à TimescaleDB (api, predict)
-#   ml_network    : appels internes api <-> predict
+#   proxy_network   : exposition via Traefik
+#   db_network      : accès à TimescaleDB (api, collector, etl, training)
+#   ml_network      : registre MLflow, et appels internes api <-> serving
+#   storage_network : partitions de variables sur Garage (serving, training,
+#                     etl, et mlflow si ses artefacts vont sur s3://)
 applications_networks:
   - proxy_network
   - api_network
@@ -66,10 +78,41 @@ applications_networks:
 #    synchrone via psycopg. Le service serving, lui, ne touche pas la base.
 applications_api_database_url: >-
   postgresql+asyncpg://{{ timescaledb_user }}:{{ timescaledb_password }}@timescaledb:5432/{{ timescaledb_db }}
-# Non consommé aujourd'hui (serving ne lit pas la base) : prêt pour le jour où
-# collector / etl / training seront déployés, avec le bon dialecte psycopg.
 applications_predict_database_url: >-
   postgresql+psycopg://{{ timescaledb_user }}:{{ timescaledb_password }}@timescaledb:5432/{{ timescaledb_db }}
+
+# --------------------------------------------------------------------------
+# Réglages communs aux services du dépôt predict (serving, training, etl,
+# collector). Leur configuration est un YAML en couches embarqué dans l'image
+# (conf/base.yaml + conf/${PREDICT_ENV}.yaml) ; les .env générés par ce rôle
+# ne fournissent que les ${VARIABLE} que ce YAML résout dans l'environnement.
+# --------------------------------------------------------------------------
+# Racine des partitions de variables produites par l'ETL, lues par serving et
+# training. Chemin local en dev, URI s3:// vers Garage en déploiement.
+applications_predict_storage_root: "data"
+# Registre déployé par ce rôle. Chaque application a son propre projet compose,
+# donc l'alias réseau du service (`mlflow`) n'est visible que dans son projet :
+# c'est le nom de conteneur qui résout d'un projet à l'autre sur ml_network.
+applications_predict_mlflow_tracking_uri: >-
+  http://enervision-mlflow:{{ applications_mlflow_port }}
+
+# Stockage objet Garage. Il n'y a pas d'AWS ici : Garage parle le protocole
+# S3, et les clients S3 sont tous des bibliothèques AWS. Les variables AWS_*
+# sont donc les noms qu'elles lisent, et AWS_ENDPOINT_URL est précisément ce
+# qui les détourne d'amazonaws.com vers notre conteneur sur storage_network.
+#
+# Les identifiants sont produits par `garage key create` et n'ont aucune
+# valeur par défaut utilisable. Laissés vides, ils ne sont pas émis dans les
+# .env et les services retombent sur le disque local — ce qui n'a de sens que
+# si storage_root n'est pas une URI s3://.
+applications_predict_s3_endpoint_url: "http://garage:3900"
+applications_predict_s3_access_key_id: ""
+applications_predict_s3_secret_access_key: ""
+# Région annoncée par le nœud Garage (bloc [s3_api] de sa configuration). Elle
+# entre dans la signature SigV4 de chaque requête : un client qui signe pour
+# us-east-1 — le défaut de toutes ces bibliothèques dès qu'on leur donne un
+# point d'accès — se fait rejeter par un nœud qui en annonce une autre.
+applications_predict_s3_region: "{{ garage_s3_region | default('garage') }}"
 
 # --------------------------------------------------------------------------
 # API — variables du fichier .env généré (api.env.j2). Noms des clés = ceux
@@ -99,19 +142,52 @@ applications_api_cors_allowed_origins: "https://{{ applications_front_host }}"
 # démarrer. Défini dans group_vars par indirection Vault.
 
 # --------------------------------------------------------------------------
-# Predict (service serving) — variables du fichier .env généré
-# (predict.env.j2). La config predict est un YAML en couches
-# (conf/base.yaml + conf/${PREDICT_ENV}.yaml) ; le .env ne fournit que les
-# ${VARIABLE} que ce YAML résout dans l'environnement.
+# MLflow — registre de modèles et journal des entraînements. Porté par l'image
+# predict/training, qui embarque MLflow et sert aussi de serveur : une seule
+# image pour le client et le serveur garantit qu'ils sont de la même version,
+# un écart entre les deux produisant des runs illisibles dans l'interface.
+#
+# C'est le pivot de la chaîne ML : training y enregistre ses versions, serving
+# y résout l'alias du modèle qu'il sert. Sans lui, serving démarre et refuse
+# les prévisions en 503.
 # --------------------------------------------------------------------------
-applications_predict_env: production
-# Racine des partitions de variables produites par l'ETL. Chemin local en
-# dev, URI s3:// vers Garage en déploiement.
-applications_predict_storage_root: "data"
-applications_predict_mlflow_tracking_uri: "http://mlflow:5000"
+# Backend store : le Model Registry exige une base, un file store ne suffit
+# pas — et sans registre, serving n'aurait pas d'alias à résoudre. SQLite dans
+# le volume, hors image, pour que les runs survivent à un redéploiement.
+applications_mlflow_backend_store_uri: "sqlite:////mlruns/mlflow.db"
+# Artefacts servis par le registre lui-même (proxy). Une URI s3:// vers Garage
+# est acceptée : le service prend alors storage_network et les clés S3.
+applications_mlflow_artifacts_destination: "/mlruns/artifacts"
+# MLflow 3 refuse tout en-tête Host qu'il ne reconnaît pas, par protection
+# contre le DNS rebinding, et répond 403 — y compris à ses propres clients.
+# Sans cette liste, training ne peut pas ouvrir de run et serving ne peut pas
+# résoudre son alias. Le domaine public y est ajouté quand la route existe.
+applications_mlflow_allowed_hosts:
+  - "enervision-mlflow:{{ applications_mlflow_port }}"
+  - "localhost:{{ applications_mlflow_port }}"
+  - "127.0.0.1:{{ applications_mlflow_port }}"
+
+# Le registre décide du modèle servi en production : déplacer un alias suffit
+# à changer les prévisions rendues aux clients, et MLflow n'a aucune
+# authentification propre. Il n'est donc pas routé par défaut — l'interface se
+# consulte par un tunnel SSH. L'exposer impose de passer par Traefik avec une
+# authentification basique, et le rôle le vérifie avant de déployer.
+applications_mlflow_expose: false
+applications_mlflow_host: "mlflow.enervision.com"
+# Lignes htpasswd `utilisateur:hash`, séparées par des virgules. Générer avec
+#   htpasswd -nbB <utilisateur> '<mot de passe>'
+# et stocker le résultat dans le vault, jamais en clair dans le dépôt.
+applications_mlflow_basic_auth_users: ""
+
+# --------------------------------------------------------------------------
+# Serving (dépôt predict, service predict/serving) — inférence en ligne.
+# Processus long derrière Traefik : il résout un alias du registre MLflow,
+# relit les partitions de variables produites par l'ETL, et sert /predict.
+# --------------------------------------------------------------------------
+applications_serving_env: production
 # Alias MLflow du modèle servi. Le déplacer dans le registre suffit à
 # promouvoir une version, sans redéployer le service.
-applications_predict_serving_model_uri: "models:/enervision_xgboost@champion"
+applications_serving_model_uri: "models:/enervision_xgboost@champion"
 
 # --------------------------------------------------------------------------
 # Collector (dépôt predict, service predict/collector) — job d'ingestion de
@@ -129,10 +205,41 @@ applications_etl_env: production
 applications_etl_database_url: "{{ applications_predict_database_url }}"
 applications_etl_period_seconds: 3600
 
+# --------------------------------------------------------------------------
+# Training (dépôt predict, service predict/training) — réentraînement du
+# modèle. Traitement daté : il apprend, enregistre une version dans MLflow,
+# et sort. Rien à maintenir en vie, donc pas de `docker compose up` : le rôle
+# dépose son compose comme pour les autres, et c'est un timer systemd qui le
+# déclenche par `docker compose run --rm` (kind: job).
+# --------------------------------------------------------------------------
+applications_training_env: production
+# Lue par --promote seul, qui inscrit la version mise en service dans la table
+# `modele`. L'apprentissage, lui, ne lit que les partitions de variables.
+applications_training_database_url: "{{ applications_predict_database_url }}"
+applications_training_experiment: "enervision-consumption"
+# Profondeur d'historique apprise, en journées (défaut du CLI training).
+applications_training_history_days: 90
+# false : la version entraînée reste challenger. Promouvoir est un geste
+# délibéré, pris après lecture des métriques du run — un modèle mis en service
+# par un timer changerait les prévisions sans que personne ne l'ait décidé.
+applications_training_promote: false
+# Hebdomadaire : le modèle apprend une saisonnalité hebdomadaire, et
+# réapprendre plus souvent coûterait des heures de calcul pour le même modèle.
+applications_training_on_calendar: "Sun *-*-* 03:30:00"
+# Un entraînement sur 90 jours et 7 sites dure des dizaines de minutes. Sans
+# borne explicite, systemd tuerait le service au bout de 90 s (défaut de
+# TimeoutStartSec) en laissant un run MLflow ouvert derrière lui.
+applications_training_timeout_seconds: 7200
+# Vrai quand l'entraînement doit exister sur l'hôte. Pilote la pose et la
+# dépose des unités systemd, comme applications_collector_backfill_active.
+applications_training_active: >-
+  {{ 'training' in applications_enabled }}
+
 # Job de rafraîchissement des prédictions, porté par l'image de l'API. Toutes
 # les heures : la fraîcheur assumée par l'équipe est d'au plus une heure.
 applications_predict_cron_period_seconds: 3600
-applications_predict_url: "http://enervision-predict:{{ applications_predict_port }}"
+applications_predict_url: >-
+  http://enervision-serving:{{ applications_serving_port }}
 applications_predict_horizon_hours: 24
 applications_predict_timeout_seconds: 10
 
@@ -156,17 +263,23 @@ applications_collector_backfill_active: >-
 applications_enabled:
   - front
   - api
-  - predict
+  - mlflow
+  - serving
+  - training
   - collector
 
 # Catalogue de toutes les applications connues. Le nom sert aussi de
 # sous-dossier et de préfixe de template (<name>.compose.yml.j2, <name>.env.j2).
 #
 # kind :
-#   web    — service HTTP exposé derrière Traefik (front, api) ;
+#   web    — service HTTP exposé derrière Traefik (front, api, serving) ;
 #   worker — processus long sans port ni route (poller du collector). Son
 #            compose n'a ni label Traefik ni healthcheck HTTP, et les tâches
-#            de rattrapage systemd ne s'appliquent qu'à lui.
+#            de rattrapage systemd ne s'appliquent qu'à lui ;
+#   job    — traitement daté (training). Il reçoit son répertoire, son .env,
+#            son compose et son image comme les autres, mais n'est jamais
+#            démarré par `docker compose up` : un timer systemd le lance, et
+#            il sort quand il a fini.
 applications_services_catalog:
   - name: front
     kind: web
@@ -176,10 +289,23 @@ applications_services_catalog:
     kind: web
     image: "{{ applications_image_namespace }}/{{ applications_api_image_name }}:{{ applications_api_sha }}"
     sha: "{{ applications_api_sha }}"
-  - name: predict
+  # Porté par l'image de training, qui embarque le serveur MLflow. Il n'a donc
+  # ni image ni version propres, d'où shares_image_with — comme predict-cron
+  # sur l'image de l'API. Déclaré avant serving : c'est lui qui résout l'alias
+  # du modèle, autant qu'il trouve le registre déjà debout.
+  - name: mlflow
     kind: web
-    image: "{{ applications_image_namespace }}/{{ applications_predict_image_name }}:{{ applications_predict_sha }}"
-    sha: "{{ applications_predict_sha }}"
+    image: "{{ applications_image_namespace }}/{{ applications_training_image_name }}:{{ applications_training_sha }}"
+    sha: "{{ applications_training_sha }}"
+    shares_image_with: training
+  - name: serving
+    kind: web
+    image: "{{ applications_image_namespace }}/{{ applications_serving_image_name }}:{{ applications_serving_sha }}"
+    sha: "{{ applications_serving_sha }}"
+  - name: training
+    kind: job
+    image: "{{ applications_image_namespace }}/{{ applications_training_image_name }}:{{ applications_training_sha }}"
+    sha: "{{ applications_training_sha }}"
   - name: collector
     kind: worker
     image: "{{ applications_image_namespace }}/{{ applications_collector_image_name }}:{{ applications_collector_sha }}"

@@ -1,0 +1,15 @@
+# Déployé par le rôle Ansible "applications" — ne pas éditer sur l'hôte.
+[Unit]
+Description=EnerVision — planification du réentraînement du modèle
+
+[Timer]
+OnCalendar={{ applications_training_on_calendar }}
+# Rejoue l'occurrence manquée si la VM était éteinte à l'heure prévue : un
+# modèle qui saute une semaine d'apprentissage vieillit en silence.
+Persistent=true
+# Étale le déclenchement : l'entraînement et le rattrapage de la collecte ne
+# doivent pas se disputer le CPU de la VM à la seconde près.
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target

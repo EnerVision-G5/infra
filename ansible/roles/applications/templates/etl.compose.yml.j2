@@ -30,7 +30,11 @@ services:
       - .env
 
     networks:
+      # Couche brute, lue et reposée.
       - db_network
+      # Destination des partitions de variables : c'est ici que serving et
+      # training viendront les relire.
+      - storage_network
 
     logging:
       driver: json-file
@@ -42,3 +46,7 @@ networks:
   db_network:
     external: true
     name: db_network
+
+  storage_network:
+    external: true
+    name: storage_network
