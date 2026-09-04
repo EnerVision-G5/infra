@@ -1,0 +1,20 @@
+---
+# Bootstrap du layout Garage.
+#
+# Un nœud Garage neuf ne stocke rien tant qu'aucune capacité ne lui est
+# assignée et que le layout n'est pas appliqué : toute requête S3 / web
+# répond alors « 503 Could not reach quorum of 1 (0 of 0) ». Le rôle fait
+# cette initialisation, une seule fois, pour le déploiement mono-nœud
+# on-premise.
+#
+# Mettre à false sur une installation multi-nœuds où le layout est piloté
+# à la main.
+garage_layout_manage: true
+
+# Zone du nœud dans le layout. Nom libre ; une seule zone en mono-nœud.
+garage_layout_zone: "dc1"
+
+# Capacité déclarée du nœud. En mono-nœud la valeur absolue importe peu
+# (Garage l'utilise pour répartir entre nœuds) ; la garder cohérente avec
+# l'espace réellement dispo pour le volume garage_data.
+garage_layout_capacity: "64G"
