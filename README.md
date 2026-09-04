@@ -71,6 +71,44 @@ Un rôle seul peut être rejoué via ses tags :
 ansible-playbook ansible/playbooks/provision.yml --tags monitoring --ask-vault-pass
 ```
 
+### Configuration applicative
+
+Chaque application reçoit son `.env`, rendu depuis `<nom>.env.j2` et monté par
+`env_file` dans son `compose.yml`. Aucune application ne lit sa configuration
+au build : les images sont épinglées par SHA et déployées telles quelles sur
+des environnements dont les domaines diffèrent.
+
+Deux réglages doivent **concorder**, sinon le navigateur bloque les appels du
+dashboard vers l'API malgré une configuration correcte d'un seul côté :
+
+| Variable | Application | Rôle |
+| --- | --- | --- |
+| `applications_front_csp_connect_src` | front | Autorise le navigateur à **émettre** l'appel (directive `connect-src` de la CSP) |
+| `applications_api_cors_allowed_origins` | api | Autorise le navigateur à **lire** la réponse (CORS) |
+
+Les deux dérivent de `applications_front_host` et `applications_api_host` :
+surcharger un domaine dans `group_vars` les emmène toutes les deux, sans écrire
+d'adresse en double. Le rôle refuse une valeur vide ou contenant un joker, pour
+l'une comme pour l'autre.
+
+Leur **schéma** dérive de `traefik_entrypoint`, il n'est jamais écrit en dur :
+
+| `traefik_entrypoint` | `applications_public_scheme` |
+| --- | --- |
+| `web` (port 80, valeur actuelle) | `http` |
+| `websecure` (port 443) | `https` |
+
+Ce n'est pas un détail cosmétique. Pour un navigateur, `http://app…` et
+`https://app…` sont deux **origines différentes** : annoncer l'une pendant que
+Traefik sert l'autre fait échouer le CORS et la CSP ensemble, avec un message
+de blocage cross-origin qui ne dit pas que seul le schéma cloche. Le jour où
+l'on bascule sur `websecure` — et où l'on décommente les labels TLS des
+routeurs applicatifs — les origines suivent d'elles-mêmes.
+
+Ces valeurs ne sont pas des secrets — ce sont des adresses de service, que le
+dashboard republie d'ailleurs en clair sur `/config.js`. **Rien de sensible ne
+doit passer par la configuration du front.**
+
 ## Secrets
 
 Il n'y a plus de Key Vault. Tous les mots de passe, tokens et identifiants
