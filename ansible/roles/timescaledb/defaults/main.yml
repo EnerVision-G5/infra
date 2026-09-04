@@ -11,6 +11,16 @@ timescaledb_user: enervision
 # timescaledb_password : OBLIGATOIRE — à définir dans group_vars (idéalement
 # chiffré avec ansible-vault). Aucune valeur par défaut volontairement.
 
+# Schéma de la base. Les scripts SQL versionnés dans le dépôt sont la source
+# de vérité unique du schéma : ils sont copiés sur l'hôte puis montés dans
+# /docker-entrypoint-initdb.d, comme le compose local de enervision-db.
+#
+# ATTENTION : Postgres ne joue ce répertoire qu'au PREMIER démarrage, sur un
+# volume de données vide. Ajouter un fichier ici ne suffit donc pas à faire
+# évoluer une base déjà initialisée : il faut l'appliquer explicitement au
+# psql, ou repartir d'un volume neuf.
+timescaledb_initdb_src: "{{ playbook_dir }}/../../enervision-db/initdb/"
+
 # Publication du port sur l'hôte, pour l'administration psql uniquement.
 # Lié à la loopback par défaut : les autres conteneurs (API, ETL) passent par
 # le réseau Docker "databases", pas par le port publié.

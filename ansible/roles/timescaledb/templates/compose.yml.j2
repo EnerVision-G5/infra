@@ -1,6 +1,9 @@
 # Déployé par le rôle Ansible "timescaledb" — ne pas éditer sur l'hôte.
-# Base EnerVision (TimescaleDB / PG16). Le schéma est géré côté API
-# (SQLAlchemy / migrations Alembic), pas ici.
+# Base EnerVision (TimescaleDB / PG16). Le schéma vient des scripts SQL de
+# ./initdb, copiés par le rôle depuis enervision-db/initdb : ce sont eux la
+# source de vérité, pas les modèles de l'API.
+#
+# Ces scripts ne sont joués qu'au premier démarrage, volume de données vide.
 services:
   timescaledb:
     image: {{ timescaledb_image }}
@@ -19,6 +22,9 @@ services:
 
     volumes:
       - timescaledb_data:/var/lib/postgresql/data
+      # Seul le schéma est copié sur l'hôte : le seed de développement
+      # (enervision-db/dev-seed) n'a rien à faire en production.
+      - ./initdb:/docker-entrypoint-initdb.d:ro
 
     networks:
       - db_network

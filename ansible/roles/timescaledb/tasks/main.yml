@@ -7,6 +7,15 @@
     group: root
     mode: "0755"
 
+- name: Copy timescaledb schema scripts
+  ansible.builtin.copy:
+    src: "{{ timescaledb_initdb_src }}"
+    dest: "{{ timescaledb_dir }}/initdb/"
+    owner: root
+    group: root
+    mode: "0644"
+    directory_mode: "0755"
+
 - name: Generate timescaledb docker compose file
   ansible.builtin.template:
     src: compose.yml.j2

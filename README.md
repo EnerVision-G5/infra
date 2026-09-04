@@ -21,9 +21,29 @@ le pipeline ou par un `ansible-playbook`.
 | `docker_engine` | Docker Engine, Compose et les réseaux externes du projet      |
 | `traefik`     | Point d'entrée unique :443, TLS, routage                        |
 | `garage`      | Stockage objet compatible S3 (artefacts, archives)              |
-| `timescaledb` | PostgreSQL + TimescaleDB                                        |
+| `timescaledb` | PostgreSQL + TimescaleDB, schéma initial depuis `enervision-db/initdb` |
 | `monitoring`  | Prometheus, Grafana, Loki + Promtail, node_exporter, cAdvisor   |
 | `applications` | Déploiement Front / API / Predict — un `compose.yml` par application, images GHCR épinglées par SHA |
+
+## Schéma de la base
+
+Les scripts SQL de `enervision-db/initdb/` sont la source de vérité unique du
+schéma. Le rôle `timescaledb` les copie dans `/opt/srv/timescaledb/initdb` et
+les monte sur `/docker-entrypoint-initdb.d` : le conteneur les joue lui-même,
+dans l'ordre des préfixes numériques, exactement comme le compose local.
+
+Postgres ne joue ce répertoire **qu'au premier démarrage, sur un volume de
+données vide**. Sur une base déjà initialisée — y compris une base vide créée
+avant que ce montage n'existe — rejouer le playbook ne change donc rien. Il
+faut repartir d'un volume neuf, ce qui **détruit les données** :
+
+```bash
+cd /opt/srv/timescaledb && docker compose down -v && docker compose up -d
+docker compose exec timescaledb psql -U enervision -d enervision -c "\dt"
+```
+
+Un script ajouté après coup à `initdb/` suit la même règle : il n'entrera en
+vigueur que sur une base neuve. Sur une base en service, l'appliquer au psql.
 
 ## CI
 
