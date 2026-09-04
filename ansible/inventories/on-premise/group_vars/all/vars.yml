@@ -61,13 +61,22 @@ applications_predict_storage_root: "s3://enervision-features"
 applications_predict_s3_endpoint_url: "http://garage:3900"
 
 # --- MLflow (image predict/training) : registre de modèles ----------------
-# Pas de route Traefik : MLflow n'a aucune authentification propre et décide
-# du modèle servi en production. Le port est publié sur la seule boucle locale
-# de l'hôte, l'interface se consulte donc par un tunnel SSH :
+# Route Traefik ouverte, et jamais sans authentification basique : MLflow n'a
+# aucune authentification propre, et déplacer un alias dans le registre suffit
+# à changer le modèle servi en production. Le rôle refuse de déployer la route
+# tant que applications_mlflow_basic_auth_users est vide, cf. le rattachement
+# au vault en bas de fichier — hachage produit par
+# `htpasswd -nbB <utilisateur> '<mot de passe>'`.
+#
+# Le port reste publié sur la seule boucle locale de l'hôte : la route n'est
+# pas le seul chemin, et le tunnel SSH reste la voie sûre tant que
+# traefik_entrypoint vaut `web`, l'authentification basique voyageant alors en
+# clair.
 #   ssh -p 2222 -L 5000:127.0.0.1:5000 <hote>  puis http://localhost:5000
-# Pour l'exposer : passer expose à true ET renseigner le hachage htpasswd
-# (`htpasswd -nbB <utilisateur> '<mot de passe>'`) dans le vault.
-applications_mlflow_expose: false
+#
+# Le domaine doit résoudre vers l'hôte avant le déploiement : sans
+# enregistrement DNS, Traefik n'a aucun Host à faire correspondre à la route.
+applications_mlflow_expose: true
 applications_mlflow_host: "mlflow.enervision.com"
 
 # --- Serving (image predict/serving) : contenu du .env (serving.env.j2) ----
