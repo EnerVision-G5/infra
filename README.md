@@ -64,7 +64,8 @@ Prérequis sur le poste qui déploie :
 - `ansible-core` et les collections (`ansible-galaxy collection install -r
   ansible/requirements.yml`) ;
 - `sshpass`, tant que l'hôte est joint par mot de passe (cf. `hosts.yml`) ;
-- une route vers la VM (réseau de l'école ou VPN) ;
+- une route vers la VM (réseau de l'école ou VPN) : aucun runner GitHub n'y
+  accède, voir [Déployer depuis GitHub Actions](#déployer-depuis-github-actions) ;
 - le mot de passe du Vault.
 
 ### Provisionner l'hôte
@@ -241,6 +242,45 @@ Ce que le retour d'image ne défait pas :
   pas en changeant d'image ;
 - **les données écrites** entre-temps (mesures, prédictions archivées) : elles
   restent, c'est voulu.
+
+### Déployer depuis GitHub Actions
+
+La checklist de projet attend un déploiement « par le pipeline, sans commande
+manuelle ». Sur la VM on-premise, ce n'est pas possible tel quel : elle est
+sur un réseau privé (`10.105.200.0/24`), les runners hébergés par GitHub ne
+peuvent pas la joindre. La seule voie serait un **runner auto-hébergé**
+installé sur la VM (ou une machine du même réseau), qui interroge GitHub en
+sortie HTTPS et exécuterait un workflow `workflow_dispatch` lançant
+`ansible-playbook` en local.
+
+Ce que ça coûterait et ce que ça rapporterait, au vu de l'état actuel :
+
+| | |
+| --- | --- |
+| **Faisabilité** | Oui. Installation en une vingtaine de minutes (archive du runner, `config.sh` avec un jeton d'enregistrement du dépôt `infra`, service systemd). Aucun coût : les runners auto-hébergés sont gratuits sur un dépôt privé du plan gratuit. Le runner a besoin de Docker, donc d'un accès équivalent à root sur l'hôte de production. |
+| **Gain réel** | Le journal du déploiement est sur GitHub, le mot de passe du Vault n'existe qu'en secret Actions au lieu d'être sur quatre postes, plus besoin d'Ansible ni d'un accès au réseau de l'école pour déployer. Sur la traçabilité, l'essentiel est déjà obtenu par la PR de bump : la version déployée est celle de `vars.yml`. |
+| **Ce qui manque pour le faire sûrement** | Sur un dépôt privé du plan gratuit, GitHub n'offre ni protection de branche (l'API répond « Upgrade to GitHub Pro »), ni règles de protection d'environnement (relecteur obligatoire), ni groupes de runners réservés à certains workflows. Concrètement : toute personne avec le droit d'écriture peut pousser une branche dont un workflow indique `runs-on: self-hosted` et l'exécuter, sans relecture, avec les droits du runner sur l'hôte de production. |
+| **Ordre des chantiers** | L'hôte est encore joint en root par mot de passe et servi en HTTP clair. Ajouter un agent permanent avec accès Docker sur cette machine avant d'avoir corrigé ces deux points ajoute une surface d'attaque au mauvais moment. |
+| **Cadence** | Quatre personnes, quelques mises en production par jour au plus, un seul environnement. La commande manuelle prend deux minutes une fois la PR fusionnée. |
+
+**Décision : pas de runner auto-hébergé pour l'instant.** La mise en production
+reste manuelle, tracée par la PR de bump décrite ci-dessus. À réexaminer si
+l'une de ces conditions change : durcissement SSH et TLS terminés ; passage à
+un plan GitHub (ou dépôt public) donnant les environnements avec relecteur
+obligatoire et les groupes de runners ; cadence ou nombre d'environnements
+rendant la commande manuelle pénible.
+
+Si le sujet est rouvert, le montage minimal est : runner installé par Ansible
+sur la VM sous un utilisateur dédié membre du groupe `docker`, enregistré sur le
+seul dépôt `infra`, workflow en `workflow_dispatch` uniquement avec
+`concurrency` pour sérialiser les déploiements, `ansible_connection: local`,
+mot de passe du Vault en secret Actions.
+
+Un pas intermédiaire, sans runner, apporterait déjà quelque chose : un job CI
+sur les PR d'`infra` qui vérifie que chaque `applications_*_sha` existe sur
+GHCR (`docker manifest inspect`). Il demande un jeton en lecture sur les
+paquets des trois dépôts de service et arrêterait un SHA mal copié avant qu'il
+n'atteigne l'hôte.
 
 ### Configuration applicative
 
