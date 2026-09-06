@@ -19,6 +19,10 @@ ansible/inventories/**/host_vars/*_secrets.yml
 id_rsa*
 id_ed25519*
 
+# Documentation (MkDocs) — build local, jamais versionné
+docs/site/
+docs/.cache/
+
 # Divers
 .DS_Store
 *.log
