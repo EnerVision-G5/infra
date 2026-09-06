@@ -7,8 +7,10 @@ V2, la plateforme est **intégralement on-premise** : tout est provisionné et
 configuré par **Ansible** sur la VM de l'école, en conteneurs Docker Compose,
 derrière Traefik. Terraform et les ressources Azure sont sortis du périmètre.
 
-Ce dépôt n'est pas un service applicatif : aucun endpoint, tout est exécuté par
-le pipeline ou par un `ansible-playbook`.
+Ce dépôt n'est pas un service applicatif : aucun endpoint. La CI ne fait que
+valider ; l'hôte est configuré et les applications déployées par
+`ansible-playbook`, lancé depuis un poste de l'équipe (voir
+[Déployer](#déployer)).
 
 ## Périmètre
 
@@ -57,12 +59,20 @@ L'inventaire cible la VM on-premise
 chiffré : ajouter `--ask-vault-pass` (ou `--vault-password-file`, voir
 [Secrets](#secrets)).
 
-```bash
-# Provisionnement de l'hôte (système, Docker, Traefik, bases, monitoring…)
-ansible-playbook ansible/playbooks/provision.yml --ask-vault-pass
+Prérequis sur le poste qui déploie :
 
-# Déploiement applicatif (Front / API / Predict)
-ansible-playbook ansible/playbooks/deploy.yml --ask-vault-pass
+- `ansible-core` et les collections (`ansible-galaxy collection install -r
+  ansible/requirements.yml`) ;
+- `sshpass`, tant que l'hôte est joint par mot de passe (cf. `hosts.yml`) ;
+- une route vers la VM (réseau de l'école ou VPN) : aucun runner GitHub n'y
+  accède, voir [Déployer depuis GitHub Actions](#déployer-depuis-github-actions) ;
+- le mot de passe du Vault.
+
+### Provisionner l'hôte
+
+```bash
+# Système, Docker, Traefik, Garage, TimescaleDB, monitoring…
+ansible-playbook ansible/playbooks/provision.yml --ask-vault-pass
 ```
 
 Un rôle seul peut être rejoué via ses tags :
@@ -70,6 +80,207 @@ Un rôle seul peut être rejoué via ses tags :
 ```bash
 ansible-playbook ansible/playbooks/provision.yml --tags monitoring --ask-vault-pass
 ```
+
+### Mettre en production une version
+
+Il n'y a pas de déploiement automatique. La chaîne complète est :
+
+1. un merge sur `master` du dépôt de service déclenche son workflow CD, qui
+   rejoue la CI, construit l'image et la publie sur GHCR sous le tag
+   `sha-<sha git complet>` ;
+2. quelqu'un reporte ce tag dans `applications_<app>_sha`
+   (`ansible/inventories/on-premise/group_vars/all/vars.yml`) par une PR sur
+   `develop` ;
+3. une fois la PR fusionnée, `ansible-playbook deploy.yml` est lancé depuis un
+   poste ;
+4. la version est vérifiée sur l'hôte et depuis un navigateur.
+
+La PR de bump est ce qui rend le déploiement traçable : `vars.yml` sur
+`develop` **est** l'état attendu de la production. Un SHA poussé sans PR ou un
+`compose.yml` retouché à la main sur l'hôte casse cette équivalence, et le
+prochain passage du playbook écrase de toute façon la retouche.
+
+| Variable de `vars.yml`     | Image GHCR (`ghcr.io/enervision-g5/…`) | Dépôt       | Workflow CD         |
+| -------------------------- | -------------------------------------- | ----------- | ------------------- |
+| `applications_front_sha`   | `dashboard`                            | `dashboard` | `cd.yml`            |
+| `applications_api_sha`     | `api`                                  | `api`       | `cd.yml`            |
+| `applications_serving_sha` | `predict/serving`                      | `predict`   | `cd-serving.yml`    |
+| `applications_training_sha`| `predict/training`                     | `predict`   | `cd-training.yml`   |
+| `applications_etl_sha`     | `predict/etl`                          | `predict`   | `cd-etl.yml`        |
+| `applications_collector_sha` | `predict/collector`                  | `predict`   | `cd-collector.yml`  |
+
+`mlflow` tourne sur l'image `predict/training` et `predict-cron` sur l'image
+`api` : ils suivent `applications_training_sha` et `applications_api_sha`, sans
+variable propre.
+
+#### 1. Lire le SHA publié
+
+Deux sources, à recouper :
+
+- **Le run CD** : onglet *Actions* du dépôt de service, workflow `cd` (ou
+  `cd-<service>` pour `predict`) sur `master`, job « Build & push image
+  (GHCR) ». Son résumé « Image publiée » liste les tags poussés, dont
+  `ghcr.io/enervision-g5/<image>:sha-<sha>`. En ligne de commande :
+
+  ```bash
+  gh run list -R EnerVision-G5/api --workflow cd.yml --branch master -L 5 \
+    --json headSha,conclusion,url
+  ```
+
+  Le tag à déployer est `sha-<headSha>` du dernier run **`success`**.
+
+- **La page Packages du dépôt** (*Code → Packages*, par exemple
+  `https://github.com/EnerVision-G5/dashboard/pkgs/container/dashboard`, ou
+  `…/predict/pkgs/container/predict%2Fserving` pour les images de `predict`).
+  Chaque version y apparaît avec ses tags et sa date de publication.
+
+Ce que la page Packages ne dit pas : le workflow **pousse l'image avant de la
+tester**. Un run rouge à l'étape « Smoke test de l'image publiée » laisse donc
+sur GHCR un tag qui n'a pas été validé. Vérifier le run, pas seulement la
+présence du tag. Trois autres pièges :
+
+- le tag `latest` est déplacé à chaque publication : ne jamais le déployer,
+  le rôle exige un `sha-…` et refuse une valeur vide ;
+- les quatre workflows de `predict` ne se déclenchent que sur les fichiers de
+  leur service : un commit qui ne touche que `services/etl` ne publie que
+  `predict/etl`, les trois autres images gardent leur tag précédent. Aligner
+  les quatre variables sur un même SHA suppose que les quatre runs ont eu lieu ;
+- le SHA est celui du **commit de merge sur `master`**, pas celui du dernier
+  commit de la branche de travail.
+
+#### 2. Ouvrir la PR de bump
+
+```bash
+git fetch origin develop
+git switch -c deploy-api-<sha court> origin/develop
+$EDITOR ansible/inventories/on-premise/group_vars/all/vars.yml   # applications_api_sha
+git commit -am "Déployer api sha-<sha court>"
+git push -u origin HEAD
+gh pr create --base develop --fill
+```
+
+Dans la description, coller le lien du run CD dont provient le SHA : c'est la
+preuve que l'image a passé la CI du service. La CI d'`infra` vérifie la
+syntaxe, `ansible-lint` et l'absence de secret ; le rôle `applications`
+contrôlera au déploiement que chaque application a un SHA et qu'aucun couple
+image:tag n'est dupliqué. Fusionner après relecture, puis :
+
+```bash
+git switch develop && git pull --ff-only origin develop
+```
+
+#### 3. Déployer
+
+```bash
+ansible-playbook ansible/playbooks/deploy.yml --ask-vault-pass
+```
+
+Le rôle écrit le SHA attendu dans `/opt/srv/applications/<app>/.sha`. Seules
+les applications dont ce fichier change voient leur image tirée depuis GHCR et
+leur conteneur recréé ; les autres ressortent en `ok`. Un second passage sans
+changement de version doit donc se terminer avec `changed=0` sur les tâches
+d'image et de compose : c'est aussi le moyen de vérifier que l'hôte est bien
+dans l'état décrit par Git.
+
+Les traitements datés (`training`) ne sont pas démarrés par le déploiement : leur
+image est tirée, leur prochain lancement par timer systemd utilisera la nouvelle
+version.
+
+#### 4. Vérifier
+
+Depuis un poste qui résout les domaines de `vars.yml` (le schéma suit
+`traefik_entrypoint`, `http` aujourd'hui) :
+
+```bash
+curl -fsS http://app.enervision.com/healthz
+curl -fsS http://api.enervision.com/api/v1/health
+```
+
+Sur l'hôte, pour l'image réellement en service et l'état des sondes, y compris
+les services qui n'ont pas de route publique :
+
+```bash
+docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'
+docker inspect -f '{{.State.Health.Status}}' enervision-api enervision-serving
+docker logs --since 10m enervision-api
+```
+
+`docker ps` doit afficher le tag de `vars.yml` et `(healthy)` pour chaque
+conteneur qui porte une sonde. Terminer par un parcours dans le dashboard :
+connexion, choix d'un site, affichage des mesures et de la prédiction.
+
+#### 5. Revenir en arrière
+
+Le retour arrière est un déploiement comme un autre, avec le SHA précédent. Il
+suit la même PR, ce qui garde `develop` fidèle à l'hôte :
+
+```bash
+git log --oneline -- ansible/inventories/on-premise/group_vars/all/vars.yml
+git switch -c rollback-api origin/develop
+git revert <commit de bump>          # ou remettre l'ancien SHA à la main
+git push -u origin HEAD && gh pr create --base develop --fill
+```
+
+En urgence, déployer depuis cette branche sans attendre la relecture
+(`ansible-playbook ansible/playbooks/deploy.yml --ask-vault-pass` depuis la
+branche `rollback-api`), puis faire fusionner la PR dans la foulée : la
+production ne doit pas rester sur une version absente de `develop`. Ne jamais
+corriger `compose.yml` ou `.env` directement sur l'hôte, le playbook les
+regénère.
+
+Ce que le retour d'image ne défait pas :
+
+- **le schéma de la base.** L'API applique `alembic upgrade head` à son
+  démarrage ; revenir à une image antérieure ne rejoue pas les migrations à
+  l'envers. Une ancienne API fonctionne sur un schéma plus récent tant que la
+  migration n'a fait qu'ajouter ; si elle a renommé ou supprimé, le retour
+  arrière passe par `alembic downgrade` depuis le dépôt `api`, avant de
+  redéployer ;
+- **le modèle servi.** `serving` résout l'alias `champion` dans le registre
+  MLflow au démarrage. Revenir sur un mauvais modèle se fait dans le registre,
+  en redonnant l'alias à la version précédente puis en redémarrant `serving`,
+  pas en changeant d'image ;
+- **les données écrites** entre-temps (mesures, prédictions archivées) : elles
+  restent, c'est voulu.
+
+### Déployer depuis GitHub Actions
+
+La checklist de projet attend un déploiement « par le pipeline, sans commande
+manuelle ». Sur la VM on-premise, ce n'est pas possible tel quel : elle est
+sur un réseau privé (`10.105.200.0/24`), les runners hébergés par GitHub ne
+peuvent pas la joindre. La seule voie serait un **runner auto-hébergé**
+installé sur la VM (ou une machine du même réseau), qui interroge GitHub en
+sortie HTTPS et exécuterait un workflow `workflow_dispatch` lançant
+`ansible-playbook` en local.
+
+Ce que ça coûterait et ce que ça rapporterait, au vu de l'état actuel :
+
+| | |
+| --- | --- |
+| **Faisabilité** | Oui. Installation en une vingtaine de minutes (archive du runner, `config.sh` avec un jeton d'enregistrement du dépôt `infra`, service systemd). Aucun coût : les runners auto-hébergés sont gratuits sur un dépôt privé du plan gratuit. Le runner a besoin de Docker, donc d'un accès équivalent à root sur l'hôte de production. |
+| **Gain réel** | Le journal du déploiement est sur GitHub, le mot de passe du Vault n'existe qu'en secret Actions au lieu d'être sur quatre postes, plus besoin d'Ansible ni d'un accès au réseau de l'école pour déployer. Sur la traçabilité, l'essentiel est déjà obtenu par la PR de bump : la version déployée est celle de `vars.yml`. |
+| **Ce qui manque pour le faire sûrement** | Sur un dépôt privé du plan gratuit, GitHub n'offre ni protection de branche (l'API répond « Upgrade to GitHub Pro »), ni règles de protection d'environnement (relecteur obligatoire), ni groupes de runners réservés à certains workflows. Concrètement : toute personne avec le droit d'écriture peut pousser une branche dont un workflow indique `runs-on: self-hosted` et l'exécuter, sans relecture, avec les droits du runner sur l'hôte de production. |
+| **Ordre des chantiers** | L'hôte est encore joint en root par mot de passe et servi en HTTP clair. Ajouter un agent permanent avec accès Docker sur cette machine avant d'avoir corrigé ces deux points ajoute une surface d'attaque au mauvais moment. |
+| **Cadence** | Quatre personnes, quelques mises en production par jour au plus, un seul environnement. La commande manuelle prend deux minutes une fois la PR fusionnée. |
+
+**Décision : pas de runner auto-hébergé pour l'instant.** La mise en production
+reste manuelle, tracée par la PR de bump décrite ci-dessus. À réexaminer si
+l'une de ces conditions change : durcissement SSH et TLS terminés ; passage à
+un plan GitHub (ou dépôt public) donnant les environnements avec relecteur
+obligatoire et les groupes de runners ; cadence ou nombre d'environnements
+rendant la commande manuelle pénible.
+
+Si le sujet est rouvert, le montage minimal est : runner installé par Ansible
+sur la VM sous un utilisateur dédié membre du groupe `docker`, enregistré sur le
+seul dépôt `infra`, workflow en `workflow_dispatch` uniquement avec
+`concurrency` pour sérialiser les déploiements, `ansible_connection: local`,
+mot de passe du Vault en secret Actions.
+
+Un pas intermédiaire, sans runner, apporterait déjà quelque chose : un job CI
+sur les PR d'`infra` qui vérifie que chaque `applications_*_sha` existe sur
+GHCR (`docker manifest inspect`). Il demande un jeton en lecture sur les
+paquets des trois dépôts de service et arrêterait un SHA mal copié avant qu'il
+n'atteigne l'hôte.
 
 ### Configuration applicative
 

@@ -113,8 +113,10 @@ applications_enabled:
   - etl
   - predict-cron
 
-# Version deployee de chaque image : tag GHCR immuable d'un commit precis
-# (sha-<git-sha>), mis a jour a chaque release.
+# Version déployée de chaque image : tag GHCR immuable d'un commit précis
+# (sha-<git-sha>), lu dans le résumé du run CD ou la page Packages du dépôt
+# de service, et modifié uniquement par PR : c'est elle qui trace la mise en
+# production. Procédure complète dans le README, « Mettre en production ».
 applications_front_sha: "sha-dadeb4781911fd464e24f2f41eccf178e7b52ffb"
 applications_api_sha: "sha-665d1e5a553e7cecbf4e19e5f9d01228fdf061a3"
 # serving, training et etl sont publiés depuis le dépôt predict : un même
