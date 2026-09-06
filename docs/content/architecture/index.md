@@ -87,7 +87,7 @@ flowchart TB
 | Fait | Ne fait pas |
 |---|---|
 | Créer les réseaux Docker partagés | Installer Docker |
-| Déployer et configurer les stacks | Configurer `/etc/docker/daemon.json` (GPU + snapshotter, géré à la main — voir [runbook](../exploitation/docker-daemon.md)) |
+| Déployer et configurer les stacks | Configurer `/etc/docker/daemon.json` (GPU + snapshotter, géré à la main — voir [L'hôte](hote.md)) |
 | Générer les `.env` depuis le Vault | Gérer les paquets système, SSH, le pare-feu |
 | Bootstrapper le layout Garage | Construire les images applicatives (dépôts `dashboard` / `api` / `predict`) |
 

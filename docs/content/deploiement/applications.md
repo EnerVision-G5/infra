@@ -50,7 +50,7 @@ ensuite pour tous les services `kind ≠ job`.
 2. Éditer la variable dans `group_vars/all/vars.yml` :
 
     ```yaml
-    applications_api_sha: "sha-665d1e5a553e7cecbf4e19e5f9d01228fdf061a3"
+    applications_api_sha: "sha-<git-sha du commit publié>"
     ```
 
 3. Rejouer :
@@ -82,17 +82,13 @@ de la liste.
 | `collector-backfill.timer` | rattrapage de la collecte | `*-*-* 02:30:00` |
 | `training.timer` | réentraînement | `Sun *-*-* 03:30:00` |
 
-```bash
-systemctl list-timers 'collector-backfill*' 'training*'
-systemctl start training.service          # forcer un run
-journalctl -u training.service -f
-```
+- `systemctl list-timers` montre `collector-backfill.timer` et
+  `training.timer` (si `collector` / `training` sont activés) ;
+- `systemctl start training.service` force un run hors planning.
 
 ## Vérifications
 
-```bash
-docker ps --filter name=enervision- --format '{{.Names}}\t{{.Status}}'
-for n in front api serving mlflow; do
-  echo "== $n =="; docker logs "enervision-$n" --tail 5
-done
-```
+Les conteneurs `enervision-*` doivent être `Up`. Les endpoints publics
+(`api.enervision.com/docs`, `app.enervision.com`, `predict.enervision.com/health`,
+`grafana.enervision.com`) répondent — voir
+[Premier déploiement](premier-deploiement.md), étape 10.

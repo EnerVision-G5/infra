@@ -40,8 +40,9 @@ aucun domaine n'est écrit deux fois.
   la réponse.
 
 Il faut **les deux**, et les deux origines doivent être écrites à
-l'identique (schéma + hôte). Voir le
-[runbook configuration du front](../../exploitation/front-config.md).
+l'identique (schéma + hôte). Les deux dérivent des mêmes variables
+(`applications_*_host`, `applications_public_scheme`) : une seule source, pas
+de risque de décalage.
 
 ## Asserts du rôle
 
@@ -56,8 +57,5 @@ contient un joker, ou si `applications_front_api_base_url` est vide.
 | appels API bloqués par le navigateur (console : *blocked by CORS* / *CSP*) | origine du front absente de `CORS_ALLOWED_ORIGINS` (API) **ou** de `CSP_CONNECT_SRC` (front), ou schéma qui diffère (`http` vs `https`) |
 | `404` sur une route du dashboard | fallback SPA non configuré côté image — problème du dépôt `dashboard`, pas de l'infra |
 
-```bash
-docker logs enervision-front --tail 30
-docker exec enervision-front cat /usr/share/nginx/html/config.js
-curl -s http://app.enervision.com/config.js      # via la VM
-```
+La configuration effective est servie sur `/config.js`
+(`http://app.enervision.com/config.js`).

@@ -62,25 +62,19 @@ Requête type dans Grafana → Explore → source **Loki** :
 
 ## Points d'attention
 
-!!! warning "cAdvisor dépend du driver de stockage Docker"
-    Sous le magasin d'images **containerd** (snapshotter `overlayfs`),
-    cAdvisor n'énumère **aucun conteneur** : les panneaux Docker restent
-    vides. Le fix est `containerd-snapshotter: false` dans
-    `/etc/docker/daemon.json` — voir le
-    [runbook `/etc/docker/daemon.json`](../exploitation/docker-daemon.md).
+!!! warning "cAdvisor dépend du driver de stockage Docker et de sa version"
+    - Sous le magasin d'images **containerd** (`docker info` →
+      `Storage Driver: overlayfs`), cAdvisor n'énumère **aucun conteneur**.
+      Le réglage `containerd-snapshotter: false` de `/etc/docker/daemon.json`
+      l'évite — voir [Architecture › L'hôte](../architecture/hote.md).
+    - cAdvisor doit être en **≥ `v0.52.1`** : les versions antérieures
+      parlent une API Docker trop ancienne pour le démon de la VM et
+      n'affichent aucune métadonnée conteneur.
 
 - Loki rejette les entrées de plus de 168 h (`reject_old_samples`) — sans
   effet en collecte au fil de l'eau.
 - `node-exporter` tourne en `pid: host` avec `/:/host:ro` — normal, il lit
   l'hôte.
-
-## Dépannage
-
-Voir le [runbook monitoring en panne](../exploitation/monitoring-depannage.md) :
-cAdvisor vide, Promtail muet, target Prometheus `down`.
-
-```bash
-docker exec prometheus wget -qO- 'http://localhost:9090/api/v1/targets' | python3 -m json.tool
-docker logs promtail --tail 30
-docker exec cadvisor wget -qO- http://localhost:8080/healthz
-```
+- Datasources et dashboards sont **provisionnés depuis des fichiers** (UID
+  fixes, lecture seule) : une modification faite dans l'UI Grafana est
+  perdue au prochain rechargement.

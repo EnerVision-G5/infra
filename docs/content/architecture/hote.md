@@ -43,8 +43,18 @@ durcissement système déjà fait. Les rôles Ansible qui faisaient ce travail
       que **cAdvisor ne sait pas lire** : les dashboards conteneurs restent
       vides.
 
-    Procédure complète (fusion sans écrasement, redémarrage, re-pull des
-    images) : [runbook `/etc/docker/daemon.json`](../exploitation/docker-daemon.md).
+    Si le fichier existe déjà, **fusionner** ces clés sans écraser la config
+    nvidia, puis `systemctl restart docker`. Contrôle :
+
+    ```
+    docker info | grep -iE "storage driver|default runtime"
+    #   Storage Driver: overlay2
+    #   Default Runtime: nvidia
+    ```
+
+    Un changement de driver de stockage rend l'ancien magasin d'images
+    invisible : re-tirer les images ensuite (rejouer `provision.yml` puis
+    `deploy.yml`). Les volumes de données ne sont pas concernés.
 
 ## Répertoires sur l'hôte
 

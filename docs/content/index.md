@@ -44,7 +44,6 @@ flowchart LR
 | Découvrir la plateforme | [Architecture](architecture/index.md) |
 | Comprendre un service précis | [Services](services/index.md) |
 | Déployer / mettre à jour | [Déploiement](deploiement/index.md) |
-| Un incident en cours | [Exploitation](exploitation/index.md) |
 | Une valeur précise (port, variable, version…) | [Référence](reference/index.md) |
 | Gérer les secrets | [Secrets](secrets/index.md) |
 

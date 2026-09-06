@@ -15,7 +15,7 @@ sudo apt install -y sshpass          # obligatoire (auth par mot de passe)
 - VM accessible en SSH `root` sur le port 22.
 - Docker présent, **`/etc/docker/daemon.json`** contenant `default-runtime:
   nvidia` **et** `features.containerd-snapshotter: false` — voir
-  [runbook](../exploitation/docker-daemon.md). Vérifier :
+  [Architecture › L'hôte](../architecture/hote.md). Vérifier :
 
     ```bash
     docker info | grep -iE "storage driver|default runtime"
@@ -73,8 +73,6 @@ docker exec garage /garage key info enervision-app --show-secret
 
 Reporter l'`Access Key ID` et le `Secret Access Key` dans le Vault
 (`vault_garage_s3_*`), étape 5.
-
-Détail : [runbook layout Garage](../exploitation/garage-layout.md).
 
 ## 8 — Versions d'images
 

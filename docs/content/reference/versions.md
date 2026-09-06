@@ -22,7 +22,7 @@ Tout est épinglé. Deux niveaux : les images **socle** (dans les
 !!! note "cAdvisor"
     `v0.52.1` est un minimum : les versions antérieures parlent une API
     Docker trop ancienne pour le démon de la VM et n'affichent aucune
-    métadonnée conteneur. Voir le [runbook monitoring](../exploitation/monitoring-depannage.md).
+    métadonnée conteneur. Voir [Services › Monitoring](../services/monitoring.md).
 
 ## Images applicatives — `vars.yml`
 

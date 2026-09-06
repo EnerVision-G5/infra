@@ -42,12 +42,6 @@ Le déploiement échoue si :
 - `applications_api_jwt_secret` est absente ou fait < 32 caractères ;
 - `applications_api_cors_allowed_origins` est vide ou contient `*`.
 
-## Mot de passe des comptes
-
-Hachés en **argon2id** (module `app/password.py`). Pour créer un compte
-directement en base : [runbook base de données](../../exploitation/base-de-donnees.md)
-(un simple `INSERT` avec un hash bcrypt ne fonctionne pas).
-
 ## predict-cron — même image
 
 Job de rafraîchissement des prédictions (`kind: worker`), porté par la même
@@ -71,9 +65,4 @@ l'API qui écrit la table `prediction`), `PREDICT_URL`
 | conteneur en boucle de redémarrage | `JWT_SECRET` absente / trop courte, ou base injoignable, ou migration en échec — `docker logs enervision-api` |
 | `relation "…" does not exist` | migrations non appliquées (logs de démarrage) |
 | erreur de dialecte SQLAlchemy | `DATABASE_URL` en `psycopg` au lieu d'`asyncpg` |
-| appels du dashboard bloqués | `CORS_ALLOWED_ORIGINS` — voir [runbook front](../../exploitation/front-config.md) |
-
-```bash
-docker logs enervision-api --tail 50
-docker exec enervision-api env | grep -E 'ENVIRONMENT|AUTH|DATABASE_URL|CORS'   # JWT_SECRET masqué
-```
+| appels du dashboard bloqués | `CORS_ALLOWED_ORIGINS` (symétrie avec la CSP du front — voir [front](front.md)) |

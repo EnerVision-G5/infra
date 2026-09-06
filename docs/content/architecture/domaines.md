@@ -35,9 +35,22 @@ Les wildcards `*.s3.` et `*.web.` viennent du fonctionnement de Garage :
 
 La variable `applications_public_scheme` suit cet état : elle vaut `http`
 tant que l'entrypoint est `web`, et les origines CORS / CSP en découlent
-automatiquement. Passer en HTTPS = changer `traefik_entrypoint` en
-`websecure` **et** décommenter les labels TLS des routeurs — voir le
-[runbook DNS & TLS](../exploitation/dns-tls.md).
+automatiquement.
+
+### Passer en HTTPS
+
+Trois changements, appliqués **ensemble** (front et API doivent basculer en
+même temps, sinon contenu mixte bloqué par le navigateur) :
+
+1. `vars.yml` : `traefik_entrypoint: websecure` — `applications_public_scheme`
+   bascule sur `https` et emmène les trois origines (CORS, CSP,
+   `API_BASE_URL`) avec elle.
+2. Décommenter, dans les templates, les labels
+   `traefik.http.routers.<nom>.tls=true` / `.tls.certresolver=letsencrypt`
+   et la redirection `web → websecure` du rôle traefik.
+3. Rejouer `provision.yml --tags traefik` puis `deploy.yml --tags applications`.
+
+Le port 80 doit rester ouvert : le challenge ACME HTTP passe par là.
 
 ## Enregistrements DNS attendus
 

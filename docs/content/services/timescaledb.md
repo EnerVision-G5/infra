@@ -15,10 +15,16 @@ brutes, imputations, prédictions archivées, comptes utilisateurs.
 
 ## Configuration
 
-`.env` : `POSTGRES_DB=enervision`, `POSTGRES_USER=enervision`,
-`POSTGRES_PASSWORD` (Vault). `TIMESCALEDB_TELEMETRY=off`.
+`.env` généré (`/opt/srv/timescaledb/.env`) :
 
-Healthcheck : `pg_isready -U enervision -d enervision`.
+| Clé | Vient de |
+|---|---|
+| `POSTGRES_DB` | `timescaledb_db` (`enervision`) |
+| `POSTGRES_USER` | `timescaledb_user` (`enervision`) |
+| `POSTGRES_PASSWORD` | `vault_timescaledb_password` |
+
+`TIMESCALEDB_TELEMETRY=off`. Healthcheck : `pg_isready` sur
+`$POSTGRES_USER` / `$POSTGRES_DB`.
 
 ## Le schéma n'est PAS géré ici
 
@@ -36,24 +42,27 @@ Conséquence à l'ordre de déploiement : `provision.yml` (base vide) →
 
 ## Qui se connecte
 
-| Client | Dialecte | DSN |
+| Client | Dialecte | DSN (construit par le rôle) |
 |---|---|---|
-| `api` | asyncpg | `postgresql+asyncpg://…@timescaledb:5432/enervision` |
-| `collector`, `etl`, `training`, `predict-cron` | psycopg | `postgresql+psycopg://…@timescaledb:5432/enervision` |
+| `api` | asyncpg | `postgresql+asyncpg://<user>:<pass>@timescaledb:5432/<db>` |
+| `collector`, `etl`, `training`, `predict-cron` | psycopg | `postgresql+psycopg://<user>:<pass>@timescaledb:5432/<db>` |
 
-Les deux dialectes **ne sont pas interchangeables**.
+`<user>` / `<db>` = `timescaledb_user` / `timescaledb_db`, `<pass>` vient du
+Vault. Les deux dialectes **ne sont pas interchangeables**.
 
 ## Accès administrateur
 
-```bash
-# sur la VM
-docker exec -it timescaledb psql -U enervision -d enervision
-# ou via le port loopback
-psql -h 127.0.0.1 -U enervision -d enervision
-```
+Le port est publié sur `127.0.0.1` : `psql` se lance depuis la VM. Les
+identifiants sont dans `/opt/srv/timescaledb/.env`. Ce qu'on fait *dans* la
+base (schéma, données, comptes) relève des dépôts applicatifs, pas de ce
+dépôt.
 
-Inspection, ajout d'un utilisateur applicatif, sauvegarde :
-[runbook base de données](../exploitation/base-de-donnees.md).
+## Sauvegarde
+
+Toute la donnée vit dans le volume nommé **`timescaledb_data`**, indépendant
+de l'image : le sauvegarder au niveau volume, ou faire un dump logique
+(`pg_dump` dans le conteneur, en lisant `POSTGRES_USER` / `POSTGRES_DB` de son
+environnement).
 
 ## Dépannage
 
@@ -63,9 +72,3 @@ Inspection, ajout d'un utilisateur applicatif, sauvegarde :
 | `api` : erreur de dialecte au démarrage | `DATABASE_URL` en `psycopg` au lieu d'`asyncpg` |
 | connexion refusée depuis un conteneur | le conteneur n'est pas sur `db_network` |
 | `psql` depuis l'extérieur de la VM | impossible — le port est lié à `127.0.0.1` |
-
-```bash
-docker logs timescaledb --tail 30
-docker exec timescaledb pg_isready -U enervision -d enervision
-docker exec -it timescaledb psql -U enervision -d enervision -c '\dt'
-```

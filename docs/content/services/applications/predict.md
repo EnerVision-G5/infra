@@ -138,9 +138,5 @@ une URI `s3://` et qu'aucune clé n'est fournie (assert sur l'intersection de
 | `collector` : `connection refused` vers la source | `applications_collector_mock_api_url` faux / source injoignable |
 | services predict : *NoCredentialsError* / bucket vide | clés S3 absentes du Vault, ou clé `garage` sans droit sur le bucket |
 
-```bash
-docker logs enervision-serving --tail 40
-docker logs enervision-mlflow --tail 40
-systemctl list-timers 'training*' 'collector-backfill*'
-journalctl -u training.service --since "1 week ago"
-```
+Les runs d'entraînement passés se lisent dans MLflow ; l'état des timers, dans
+`systemctl list-timers`.

@@ -49,8 +49,9 @@ déjà en version ≥ 1) :
 2. si `Current cluster layout version: 0` → `layout assign -z dc1 -c 64G <node-id>` ;
 3. `layout apply --version 1`.
 
-Procédure manuelle + création de buckets/clés :
-[runbook layout Garage](../exploitation/garage-layout.md).
+La création du **bucket** et de la **clé S3** (lus par serving / training /
+etl) reste manuelle, une fois : voir
+[Premier déploiement](../deploiement/premier-deploiement.md), étape 7.
 
 ## Ce qui utilise Garage
 
@@ -75,14 +76,7 @@ conteneur, `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` produits par
 
 | Symptôme | Cause |
 |---|---|
-| `503 Could not reach quorum of 1 (0 of 0)` | layout jamais appliqué → [runbook](../exploitation/garage-layout.md) |
+| `503 Could not reach quorum of 1 (0 of 0)` | layout jamais appliqué — le rôle `garage` le corrige au prochain `provision.yml --tags garage` |
 | `404` sur `web.enervision.com` | pas de bucket pour ce host — attendu |
 | `403 AccessDenied` depuis un client S3 | mauvaise clé, ou région ≠ `garage` dans la signature SigV4 |
 | interface webui vide | `API_ADMIN_KEY` ≠ `admin_token` du `garage.toml` |
-
-```bash
-docker exec garage /garage status
-docker exec garage /garage layout show
-docker exec garage /garage bucket list
-docker exec garage /garage key list
-```

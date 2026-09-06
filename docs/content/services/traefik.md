@@ -51,7 +51,7 @@ Le conteneur **doit** être sur `proxy_network` et Traefik aussi.
 ## État HTTPS
 
 `traefik_entrypoint` = `web` → tout le trafic applicatif est en **HTTP :80**.
-Passer en HTTPS : [runbook DNS & TLS](../exploitation/dns-tls.md).
+Passer en HTTPS : [Architecture › Domaines & routage](../architecture/domaines.md#passer-en-https).
 
 ## Dépannage
 
@@ -62,9 +62,5 @@ Passer en HTTPS : [runbook DNS & TLS](../exploitation/dns-tls.md).
 | Certificat auto-signé | normal aujourd'hui — aucun resolver TLS n'est attaché |
 | Métriques Traefik absentes de Grafana | Prometheus doit joindre `traefik:8082` → Traefik doit être sur `monitoring_network` |
 
-```bash
-docker logs traefik --tail 50
-docker exec traefik traefik version
-# routeurs vus par Traefik :
-curl -s http://localhost/api/http/routers | python3 -m json.tool   # via tunnel/tableau de bord
-```
+Les routeurs et services vus par Traefik se lisent dans son **tableau de
+bord** (`traefik.enervision.com`).
