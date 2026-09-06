@@ -1,0 +1,44 @@
+# Déployé par le rôle Ansible "applications" — ne pas éditer sur l'hôte.
+[Unit]
+Description=EnerVision — surveillance de la dérive du modèle servi
+Documentation=https://github.com/EnerVision-G5/predict
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# Même image que le réentraînement — c'est le même paquet — mais un autre
+# point d'entrée : `python -m training.drift` là où l'image sert
+# `python -m training`. Le service est déclaré dans le compose du training,
+# derrière le profil `jobs` : il n'est donc jamais démarré par un `up`, et
+# c'est ce timer qui le lance.
+#
+# `run --rm` et non `up` : la surveillance est un traitement daté, elle
+# mesure et elle sort. -T parce qu'un timer n'a pas de terminal à allouer.
+WorkingDirectory={{ applications_dir }}/training
+ExecStart=/usr/bin/docker compose \
+  --project-name enervision-training \
+  --profile jobs \
+  run --rm -T drift
+
+# Le code de sortie EST le verdict, et systemd est le premier à le lire :
+#
+#   0  le modèle servi tient ses métriques
+#   2  DÉRIVE — d'ensemble, ou d'un seul site
+#   1  le calcul lui-même a échoué (registre injoignable, partitions absentes)
+#
+# `SuccessExitStatus` n'est volontairement PAS élargi à 2. Déclarer la dérive
+# comme un succès rendrait l'unité verte au moment précis où elle a quelque
+# chose à dire, et personne ne la regarderait. Une dérive laisse donc l'unité
+# en `failed`, visible dans `systemctl --failed` et dans le collecteur systemd
+# de node-exporter, que la pile de supervision scrute déjà.
+#
+# Distinguer les deux échecs se fait sur le statut, jamais sur le journal :
+#   systemctl show -p ExecMainStatus drift.service
+# 2 envoie regarder le modèle, 1 envoie regarder l'infrastructure. Les
+# confondre ferait chercher un problème de modèle là où il n'y a rien à servir.
+
+# La surveillance rejoue le modèle sur la fenêtre mesurée, site par site.
+# Sans borne explicite, systemd tuerait le service au bout de 90 s (défaut de
+# TimeoutStartSec) en laissant un run MLflow ouvert derrière lui.
+TimeoutStartSec={{ applications_drift_timeout_seconds }}

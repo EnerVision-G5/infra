@@ -366,3 +366,52 @@
     - training.timer
   when: not (applications_training_active | bool)
   notify: Reload systemd
+
+# --------------------------------------------------------------------------
+# Surveillance de dérive : même schéma que le réentraînement, sur le même
+# compose et la même image, avec un autre point d'entrée. Quotidienne là où
+# l'entraînement est hebdomadaire — une dégradation installée depuis trois
+# jours doit se voir avant le dimanche suivant.
+#
+# Sans ces unités, le module existe, il est testé, il a sa commande, et rien
+# ne le lance : le projet n'a alors aucune détection automatique de la
+# dégradation du modèle en service.
+# --------------------------------------------------------------------------
+- name: Installer les unités systemd de la surveillance de dérive
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - drift.service
+    - drift.timer
+  when: applications_drift_active | bool
+  notify: Reload systemd
+
+- name: Activer et planifier la surveillance de dérive
+  ansible.builtin.systemd_service:
+    name: drift.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: applications_drift_active | bool
+
+- name: Retirer la surveillance de dérive quand elle est désactivée
+  ansible.builtin.systemd_service:
+    name: drift.timer
+    enabled: false
+    state: stopped
+  failed_when: false
+  when: not (applications_drift_active | bool)
+
+- name: Retirer les unités systemd de la surveillance quand elle est désactivée
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}"
+    state: absent
+  loop:
+    - drift.service
+    - drift.timer
+  when: not (applications_drift_active | bool)
+  notify: Reload systemd

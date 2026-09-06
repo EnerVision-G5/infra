@@ -1,0 +1,25 @@
+# Déployé par le rôle Ansible "applications" — ne pas éditer sur l'hôte.
+[Unit]
+Description=EnerVision — planification de la surveillance de dérive
+
+[Timer]
+# Quotidienne, là où le réentraînement est hebdomadaire : une dégradation
+# installée depuis trois jours doit se voir avant le dimanche suivant. Un
+# indicateur de dérive produit à la main vieillit en silence, ce qui est pire
+# que pas d'indicateur du tout.
+#
+# L'heure est postérieure au rattrapage de la collecte (02:30) et au
+# réentraînement du dimanche (03:30) : la surveillance mesure ce que la
+# journée a réellement produit, et le dimanche elle juge le modèle qui vient
+# d'être promu, pas celui qu'il remplace.
+OnCalendar={{ applications_drift_on_calendar }}
+# Rejoue l'occurrence manquée si la VM était éteinte à l'heure prévue. Une
+# journée de surveillance sautée est une journée où la dérive a pu s'installer
+# sans que rien ne la mesure.
+Persistent=true
+# Étale le déclenchement : la surveillance, l'entraînement et le rattrapage ne
+# doivent pas se disputer le CPU de la VM à la seconde près.
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target
