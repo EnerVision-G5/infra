@@ -3,27 +3,32 @@
 [![ci](https://github.com/EnerVision-G5/infra/actions/workflows/ci.yml/badge.svg)](https://github.com/EnerVision-G5/infra/actions/workflows/ci.yml)
 
 Infrastructure as Code du projet EnerVision. Depuis la décision d'architecture
-V2, la plateforme est **intégralement on-premise** : tout est provisionné et
-configuré par **Ansible** sur la VM de l'école, en conteneurs Docker Compose,
-derrière Traefik. Terraform et les ressources Azure sont sortis du périmètre.
+V2, la plateforme est **intégralement on-premise**, en conteneurs Docker
+Compose derrière Traefik, déployée par **Ansible**. Terraform et les ressources
+Azure sont sortis du périmètre.
+
+La VM de l'école est fournie **déjà provisionnée** (Docker installé et
+configuré, GPU, durcissement système) : Ansible ne fait plus que déployer les
+stacks dessus, il ne touche ni aux paquets, ni à SSH, ni au pare-feu, ni à
+`/etc/docker/daemon.json`.
 
 Ce dépôt n'est pas un service applicatif : aucun endpoint, tout est exécuté par
 le pipeline ou par un `ansible-playbook`.
 
 ## Périmètre
 
+`provision.yml` crée d'abord les réseaux Docker partagés (`docker_external_networks`),
+puis applique :
+
 | Rôle Ansible  | Ce qu'il installe                                              |
 | ------------- | -------------------------------------------------------------- |
-| `base`        | Paquets système de base                                         |
-| `ssh`         | Durcissement SSH (port dédié, clés uniquement)                  |
-| `firewall`    | UFW, ouverture des seuls ports nécessaires                      |
-| `security`    | Mises à jour de sécurité automatiques                           |
-| `docker_engine` | Docker Engine, Compose et les réseaux externes du projet      |
-| `traefik`     | Point d'entrée unique :443, TLS, routage                        |
-| `garage`      | Stockage objet compatible S3 (artefacts, archives)              |
-| `timescaledb` | PostgreSQL + TimescaleDB                                        |
+| `traefik`     | Point d'entrée unique, TLS, routage                             |
+| `garage`      | Stockage objet compatible S3 (artefacts, archives)             |
+| `timescaledb` | PostgreSQL + TimescaleDB — le **schéma** est porté par les migrations Alembic du dépôt `api`, jamais ici |
 | `monitoring`  | Prometheus, Grafana, Loki + Promtail, node_exporter, cAdvisor   |
-| `applications` | Déploiement Front / API / Predict — un `compose.yml` par application, images GHCR épinglées par SHA |
+
+`deploy.yml` applique le rôle `applications` : Front / API / Predict, un
+`compose.yml` par service, images GHCR épinglées par SHA.
 
 ## CI
 
@@ -58,7 +63,7 @@ chiffré : ajouter `--ask-vault-pass` (ou `--vault-password-file`, voir
 [Secrets](#secrets)).
 
 ```bash
-# Provisionnement de l'hôte (système, Docker, Traefik, bases, monitoring…)
+# Réseaux Docker partagés + Traefik, Garage, TimescaleDB, monitoring
 ansible-playbook ansible/playbooks/provision.yml --ask-vault-pass
 
 # Déploiement applicatif (Front / API / Predict)

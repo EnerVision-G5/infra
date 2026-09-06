@@ -1,5 +1,0 @@
-- name: Créer les réseaux Docker externes
-  community.docker.docker_network:
-    name: "{{ item }}"
-    state: present
-  loop: "{{ docker_external_networks }}"

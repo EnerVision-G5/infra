@@ -8,9 +8,6 @@
 #
 # Exécuter les playbooks avec `--ask-vault-pass` ou `--vault-password-file`.
 
-# SSH
-ssh_port: 2222
-
 # TRAEFIK
 traefik_domain: "traefik.enervision.com"
 traefik_entrypoint: "web"
