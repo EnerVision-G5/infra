@@ -94,6 +94,5 @@ flowchart TB
 ## Suite
 
 - [L'hôte](hote.md) — la VM et ses contraintes
-- [Réseaux Docker](reseaux.md) — les 6 réseaux et qui s'y branche
-- [Flux applicatifs](flux.md) — le parcours d'une requête
+- [Réseaux Docker](reseaux.md) — les 6 réseaux, qui s'y branche, qui parle à qui
 - [Domaines & routage](domaines.md) — la table domaine → service

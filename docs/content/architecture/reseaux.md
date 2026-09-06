@@ -85,4 +85,23 @@ le réseau partagé :
 | `timescaledb:5432` | base |
 | `garage:3900` | endpoint S3 |
 
-La matrice complète : [Référence › Réseaux & ports](../reference/reseaux-ports.md).
+## Dépendances entre conteneurs
+
+Ce qui doit être joignable pour qu'un conteneur fonctionne — utile pour
+diagnostiquer un service qui démarre mais ne sert pas.
+
+| Conteneur | Doit joindre | Réseau |
+|---|---|---|
+| `enervision-api` | `timescaledb:5432`, `enervision-serving:8000` | `db_network`, `ml_network` |
+| `enervision-front` | *(rien en interne — le navigateur appelle l'API directement)* | `proxy_network` |
+| `enervision-serving` | `enervision-mlflow:5000`, `garage:3900` | `ml_network`, `storage_network` |
+| `enervision-mlflow` | `garage:3900` *(si artefacts `s3://`)* | `ml_network`, `storage_network` |
+| `enervision-collector-poller` | `timescaledb:5432`, l'API Mock IoT (`MOCK_API_URL`) | `db_network` |
+| `enervision-etl` | `timescaledb:5432`, `garage:3900` | `db_network`, `storage_network` |
+| `enervision-predict-cron` | `timescaledb:5432`, `enervision-serving:8000` | `db_network`, `ml_network` |
+| `training` *(job)* | `timescaledb:5432`, `enervision-mlflow:5000`, `garage:3900` | `db_network`, `ml_network`, `storage_network` |
+| `traefik` | le socket Docker (`/var/run/docker.sock`) + tous les conteneurs routés sur `proxy_network` | `proxy_network`, `monitoring_network` |
+| `prometheus` | `node-exporter:9100`, `cadvisor:8080`, `traefik:8082` | `monitoring_network` |
+| `promtail` | le socket Docker, `loki:3100` | `monitoring_network` |
+
+La matrice réseaux/ports complète : [Référence › Réseaux & ports](../reference/reseaux-ports.md).
