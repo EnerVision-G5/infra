@@ -1,0 +1,8 @@
+title: Services
+nav:
+  - index.md
+  - traefik.md
+  - garage.md
+  - timescaledb.md
+  - monitoring.md
+  - applications
