@@ -1,0 +1,258 @@
+name: terraform
+
+# CI/CD Terraform, et rien d'autre : la CI Ansible (ci.yml) ne bouge pas.
+#
+#   pull request  →  pour chaque environnement touché : fmt, validate,
+#                    tflint, puis `plan` posté en commentaire ;
+#   push          →  `plan` puis `apply` de ce plan, pour les environnements
+#                    touchés que la branche a le droit d'appliquer :
+#                    develop → tous sauf PROD ; master → PROD.
+#
+# Un environnement = un dossier terraform/<ENV>/ (MAJUSCULES). Le workflow les
+# découvre seul : un nouveau dossier est pris en compte sans le déclarer ici.
+# Un changement sous modules/ ou du workflow concerne tous les environnements.
+#
+# Authentification par OIDC : GitHub présente un jeton signé, Azure l'échange
+# contre l'identité créée par terraform/scripts/bootstrap.sh. Aucun secret
+# d'accès n'est stocké ; AZURE_CLIENT_ID et AZURE_TENANT_ID sont des
+# identifiants. L'abonnement est dans le tfvars de chaque environnement.
+on:
+  pull_request:
+    paths:
+      - "terraform/**"
+      - ".github/workflows/terraform.yml"
+  push:
+    branches: [develop, master]
+    paths:
+      - "terraform/**"
+
+permissions:
+  contents: read
+  id-token: write # jeton OIDC
+  pull-requests: write # commentaire du plan
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "0"
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_USE_OIDC: "true"
+  ARM_USE_AZUREAD: "true" # état lu et écrit avec l'identité, jamais une clé
+
+jobs:
+  envs:
+    name: Environnements touchés
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.detect.outputs.matrix }}
+      apply: ${{ steps.detect.outputs.apply }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Détecter
+        id: detect
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          all="$(cd terraform && ls -d */ | tr -d / | grep -E '^[A-Z0-9]+$' || true)"
+
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            base="$(git rev-parse HEAD~1)"
+          else
+            base="$BASE"
+          fi
+          changed="$(git diff --name-only "$base" HEAD -- terraform/ .github/workflows/terraform.yml)"
+
+          if printf '%s\n' "$changed" | grep -qE '^(terraform/modules/|\.github/workflows/terraform\.yml$)'; then
+            envs="$all"
+          else
+            envs="$(printf '%s\n' "$changed" | sed -nE 's|^terraform/([A-Z0-9]+)/.*|\1|p' | sort -u)"
+          fi
+
+          # Règle d'application : PROD depuis master, le reste depuis develop.
+          apply=""
+          for e in $envs; do
+            case "$e:$REF" in
+              PROD:refs/heads/master) apply="$apply $e" ;;
+              PROD:*) ;;
+              *:refs/heads/develop) apply="$apply $e" ;;
+            esac
+          done
+
+          to_json() { printf '%s\n' "$@" | grep . | jq -R . | jq -sc .; }
+          # shellcheck disable=SC2086
+          echo "matrix=$(to_json $envs)" >> "$GITHUB_OUTPUT"
+          # shellcheck disable=SC2086
+          echo "apply=$(to_json $apply)" >> "$GITHUB_OUTPUT"
+          echo "Touchés : ${envs:-aucun} — à appliquer sur $REF : ${apply:-aucun}"
+
+  verify:
+    name: Vérifier ${{ matrix.env }}
+    needs: envs
+    if: needs.envs.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: ${{ fromJson(needs.envs.outputs.matrix) }}
+    defaults:
+      run:
+        working-directory: terraform/${{ matrix.env }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Version Terraform de l'environnement
+        id: tfv
+        run: echo "version=$(cat .terraform-version)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ steps.tfv.outputs.version }}
+          terraform_wrapper: false
+
+      - name: terraform fmt
+        run: terraform fmt -check -diff -recursive ../
+
+      # Sans backend ni abonnement : validate ne parle à personne.
+      - name: terraform validate
+        run: |
+          terraform init -backend=false
+          terraform validate -no-color
+
+      - name: Setup tflint
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: latest
+
+      - name: tflint
+        run: |
+          tflint --init --config ../.tflint.hcl
+          tflint --recursive --format compact --config "$(pwd)/../.tflint.hcl"
+
+  plan:
+    name: Plan ${{ matrix.env }}
+    needs: [envs, verify]
+    if: github.event_name == 'pull_request' && needs.envs.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: ${{ fromJson(needs.envs.outputs.matrix) }}
+    # Un plan/apply à la fois par environnement : le verrou de l'état ferait
+    # attendre le second de toute façon.
+    concurrency:
+      group: terraform-${{ matrix.env }}
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: terraform/${{ matrix.env }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Version Terraform de l'environnement
+        id: tfv
+        run: echo "version=$(cat .terraform-version)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ steps.tfv.outputs.version }}
+          terraform_wrapper: false
+
+      - name: terraform init
+        run: terraform init
+
+      - name: terraform plan
+        id: plan
+        run: |
+          set -o pipefail
+          terraform plan -no-color -lock-timeout=5m -out=tfplan | tee "$RUNNER_TEMP/plan.txt"
+
+      # Le plan sur la PR, là où on relit : c'est la revue d'infrastructure.
+      - name: Commenter le plan
+        if: always() && steps.plan.outcome != 'skipped'
+        uses: actions/github-script@v7
+        env:
+          ENV_NAME: ${{ matrix.env }}
+          OUTCOME: ${{ steps.plan.outcome }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = `${process.env.RUNNER_TEMP}/plan.txt`;
+            const raw = fs.existsSync(path) ? fs.readFileSync(path, 'utf8') : '(pas de sortie)';
+            const plan = raw.length > 60000 ? '…\n' + raw.slice(-60000) : raw;
+            const body = [
+              `### Terraform plan — ${process.env.ENV_NAME} (${process.env.OUTCOME})`,
+              '',
+              '<details><summary>Sortie de `terraform plan`</summary>',
+              '',
+              '```',
+              plan,
+              '```',
+              '</details>',
+              '',
+              `_Commit ${context.sha.slice(0, 7)} — appliqué par la CI après fusion (develop, ou master pour PROD)._`,
+            ].join('\n');
+            await github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+  apply:
+    name: Apply ${{ matrix.env }}
+    needs: [envs, verify]
+    if: github.event_name == 'push' && needs.envs.outputs.apply != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        env: ${{ fromJson(needs.envs.outputs.apply) }}
+    concurrency:
+      group: terraform-${{ matrix.env }}
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: terraform/${{ matrix.env }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Version Terraform de l'environnement
+        id: tfv
+        run: echo "version=$(cat .terraform-version)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ steps.tfv.outputs.version }}
+          terraform_wrapper: false
+
+      - name: terraform init
+        run: terraform init
+
+      # Plan puis apply DU PLAN : ce qui s'applique est exactement ce qui a
+      # été calculé, sans second calcul entre-temps.
+      - name: terraform plan
+        run: terraform plan -no-color -lock-timeout=5m -out=tfplan
+
+      - name: terraform apply
+        run: terraform apply -no-color -lock-timeout=5m tfplan
+
+      - name: Sorties
+        run: |
+          {
+            echo "## Terraform apply — ${{ matrix.env }}"
+            echo '```'
+            terraform output -no-color
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
