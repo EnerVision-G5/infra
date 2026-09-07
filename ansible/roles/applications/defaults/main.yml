@@ -311,6 +311,37 @@ applications_training_timeout_seconds: 7200
 applications_training_active: >-
   {{ 'training' in applications_enabled }}
 
+# --------------------------------------------------------------------------
+# Surveillance de dérive (image predict/training, point d'entrée
+# `python -m training.drift`) — rejoue le modèle SERVI sur les mesures
+# arrivées depuis son entraînement, et dit s'il se trompe davantage qu'à sa
+# naissance.
+#
+# Un modèle ne se dégrade pas d'un coup : il se dégrade parce que le monde
+# change sous lui. Les métriques du jour de l'entraînement ne disent rien de
+# cela, puisqu'elles ont été mesurées sur des données du passé.
+# --------------------------------------------------------------------------
+applications_drift_enabled: true
+# Quotidienne, là où le réentraînement est hebdomadaire : une dégradation
+# installée depuis trois jours doit se voir avant le dimanche suivant. Après
+# le rattrapage de la collecte (02:30) et le réentraînement (03:30), pour
+# mesurer ce que la journée a réellement produit.
+applications_drift_on_calendar: "*-*-* 04:30:00"
+# Expérience MLflow des mesures de dérive. Séparée de celle des entraînements.
+applications_drift_experiment: "enervision-drift"
+# Seuil d'alerte, en rapport à l'erreur de référence du modèle. 1.5 tolère
+# 50 % de dégradation : en dessous de 1.2 le bruit d'une semaine calme suffit
+# à déclencher, au-delà de 2 on ne détecte plus qu'une panne.
+applications_drift_alert_ratio: 1.5
+# La surveillance rejoue le modèle site par site sur la fenêtre mesurée. Sans
+# borne, systemd la tuerait au bout de 90 s en laissant un run MLflow ouvert.
+applications_drift_timeout_seconds: 1800
+# Vrai quand la surveillance doit exister sur l'hôte. Elle partage l'image du
+# réentraînement : sans lui, l'image n'est pas tirée et le compose qui la
+# déclare n'est pas déposé.
+applications_drift_active: >-
+  {{ ('training' in applications_enabled) and (applications_drift_enabled | bool) }}
+
 # Job de rafraîchissement des prédictions, porté par l'image de l'API. Toutes
 # les heures : la fraîcheur assumée par l'équipe est d'au plus une heure.
 applications_predict_cron_period_seconds: 3600
