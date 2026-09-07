@@ -1,0 +1,33 @@
+# Déployé par le rôle Ansible "applications" — ne pas éditer sur l'hôte.
+# Front EnerVision — image statique, épinglée sur applications_front_sha,
+# servie derrière Traefik.
+services:
+  front:
+    image: {{ applications_image_namespace }}/{{ applications_front_image_name }}:{{ applications_front_sha }}
+    container_name: enervision-front
+    restart: unless-stopped
+
+    # Configuration lue au démarrage du conteneur — adresses de service et
+    # origines autorisées par la CSP. L'image est construite une fois par
+    # commit et déployée telle quelle : rien de tout cela n'est figé au build.
+    env_file:
+      - .env
+
+    networks:
+      - proxy_network
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy_network"
+
+      - 'traefik.http.routers.enervision-front.rule=Host(`{{ applications_front_host }}`)'
+      - "traefik.http.routers.enervision-front.entrypoints={{ traefik_entrypoint }}"
+      # - "traefik.http.routers.enervision-front.tls=true"
+      # - "traefik.http.routers.enervision-front.tls.certresolver={{ traefik_certresolver }}"
+      - "traefik.http.routers.enervision-front.service=enervision-front"
+      - "traefik.http.services.enervision-front.loadbalancer.server.port={{ applications_front_port }}"
+
+networks:
+  proxy_network:
+    external: true
+    name: proxy_network

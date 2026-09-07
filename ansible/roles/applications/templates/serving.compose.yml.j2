@@ -1,0 +1,63 @@
+# Déployé par le rôle Ansible "applications" — ne pas éditer sur l'hôte.
+# Service d'inférence EnerVision (image predict/serving, kind: web).
+#
+# Image épinglée sur applications_serving_sha. Appelé par l'API et le job de
+# rafraîchissement sur ml_network, où il joint aussi le registre MLflow dont
+# il résout l'alias du modèle. Il lit les partitions de variables sur Garage
+# (storage_network) et ne touche jamais la base : la table `prediction` est
+# écrite par l'API, pas par lui — d'où l'absence de db_network.
+services:
+  serving:
+    image: {{ applications_image_namespace }}/{{ applications_serving_image_name }}:{{ applications_serving_sha }}
+    container_name: enervision-serving
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    networks:
+      - proxy_network
+      - ml_network
+      - storage_network
+
+    # Le service démarre même registre injoignable : il refuse alors les
+    # prévisions en 503 et le dit dans son journal. La sonde le donne pour
+    # malsain sans le redémarrer, ce qui laisse le temps de lire pourquoi.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://localhost:{{ applications_serving_port }}/health')"
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy_network"
+
+      - 'traefik.http.routers.enervision-serving.rule=Host(`{{ applications_serving_host }}`)'
+      - "traefik.http.routers.enervision-serving.entrypoints={{ traefik_entrypoint }}"
+      # - "traefik.http.routers.enervision-serving.tls=true"
+      # - "traefik.http.routers.enervision-serving.tls.certresolver={{ traefik_certresolver }}"
+      - "traefik.http.routers.enervision-serving.service=enervision-serving"
+      - "traefik.http.services.enervision-serving.loadbalancer.server.port={{ applications_serving_port }}"
+
+networks:
+  proxy_network:
+    external: true
+    name: proxy_network
+
+  ml_network:
+    external: true
+    name: ml_network
+
+  storage_network:
+    external: true
+    name: storage_network

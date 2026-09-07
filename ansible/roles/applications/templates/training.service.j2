@@ -1,0 +1,26 @@
+# Déployé par le rôle Ansible "applications" — ne pas éditer sur l'hôte.
+[Unit]
+Description=EnerVision — réentraînement du modèle de prévision
+Documentation=https://github.com/EnerVision-G5/predict
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# Le compose du service est déposé par le rôle mais jamais démarré : c'est
+# `run` qui crée un conteneur éphémère, le suit jusqu'à la fin, et rend son
+# code de sortie. -T parce qu'un timer n'a pas de terminal à allouer, et
+# --profile jobs parce que le service est justement retiré des démarrages
+# ordinaires par ce profil.
+WorkingDirectory={{ applications_dir }}/training
+ExecStart=/usr/bin/docker compose \
+  --project-name enervision-training \
+  --profile jobs \
+  run --rm -T training \
+  --history-days {{ applications_training_history_days }}{% if applications_training_promote | bool %} \
+  --promote{% endif %}
+
+# Un entraînement sur {{ applications_training_history_days }} journées dure
+# des dizaines de minutes. Sans cette borne, systemd tuerait le service au
+# bout de 90 s en laissant un run MLflow ouvert derrière lui.
+TimeoutStartSec={{ applications_training_timeout_seconds }}

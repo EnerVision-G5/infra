@@ -1,0 +1,451 @@
+---
+# Répertoire racine de déploiement sur l'hôte (un sous-dossier par application,
+# chacun avec son propre compose.yml et son .env).
+applications_dir: /opt/srv/applications
+
+# Registre d'images. Les images applicatives sont publiées sur le GHCR de
+# l'organisation par les pipelines des dépôts dashboard / api / predict.
+applications_registry: ghcr.io
+applications_image_namespace: "ghcr.io/enervision-g5"
+
+# Noms des images (repository GHCR, sans tag). Ils suivent le nom du dépôt qui
+# publie l'image ; le dépôt predict, multi-services, publie sous un chemin
+# imbriqué (predict/<service>). Le préfixe de variable suit alors le SERVICE
+# publié et non le dépôt : il n'existe pas d'image `predict`, mais quatre
+# images distinctes, dont serving et training.
+applications_front_image_name: dashboard
+applications_api_image_name: api
+applications_serving_image_name: predict/serving
+applications_training_image_name: predict/training
+applications_collector_image_name: predict/collector
+applications_etl_image_name: predict/etl
+
+# --------------------------------------------------------------------------
+# Versions déployées — un SHA par image.
+#
+# Chaque valeur est le tag GHCR immuable d'un commit précis (généré par
+# docker/metadata-action : `sha-<git-sha>`). Ces variables sont VERSIONNÉES
+# dans le dépôt (group_vars/all.yml) et mises à jour à chaque release : c'est
+# le dépôt qui référence la version déployée, jamais `latest`.
+#
+# Deux images publiées par le même dépôt au même commit portent le même tag :
+# c'est le couple image:tag qui identifie une version, pas le SHA seul.
+#
+# Laissées vides ici volontairement pour forcer une définition explicite.
+# --------------------------------------------------------------------------
+applications_front_sha: ""
+applications_api_sha: ""
+applications_serving_sha: ""
+applications_training_sha: ""
+applications_collector_sha: ""
+applications_etl_sha: ""
+
+# Domaines publics (routage Traefik). Surchargeables dans group_vars.
+# MLflow n'est pas dans cette liste par défaut : il n'a pas de route tant que
+# applications_mlflow_expose ne le demande pas (voir plus bas).
+applications_front_host: "app.enervision.com"
+applications_api_host: "api.enervision.com"
+applications_serving_host: "predict.enervision.com"
+
+# Ports internes exposés par chaque conteneur (cibles des services Traefik).
+# Le front est servi par nginx-unprivileged (uid 101) : il ne peut pas prendre
+# un port < 1024, son nginx.conf écoute donc sur 8080 (cf. dépôt dashboard).
+applications_front_port: 8080
+applications_api_port: 8080
+applications_serving_port: 8000
+applications_mlflow_port: 5000
+
+# Réseaux Docker externes requis par la stack applicative (créés si absents).
+#   proxy_network   : exposition via Traefik
+#   db_network      : accès à TimescaleDB (api, collector, etl, training)
+#   ml_network      : registre MLflow, et appels internes api <-> serving
+#   storage_network : partitions de variables sur Garage (serving, training,
+#                     etl, et mlflow si ses artefacts vont sur s3://)
+applications_networks:
+  - proxy_network
+  - api_network
+  - db_network
+  - storage_network
+  - ml_network
+  - monitoring_network
+
+# Connexion applicative à la base (construite à partir des variables du rôle
+# timescaledb ; le mot de passe vient de group_vars chiffré avec ansible-vault).
+#
+# Deux dialectes, non interchangeables :
+#  - l'API ouvre la base avec SQLAlchemy asynchrone -> asyncpg ;
+#  - les jobs batch de predict (collector, etl, training) l'ouvrent en
+#    synchrone via psycopg. Le service serving, lui, ne touche pas la base.
+applications_api_database_url: >-
+  postgresql+asyncpg://{{ timescaledb_user }}:{{ timescaledb_password }}@timescaledb:5432/{{ timescaledb_db }}
+applications_predict_database_url: >-
+  postgresql+psycopg://{{ timescaledb_user }}:{{ timescaledb_password }}@timescaledb:5432/{{ timescaledb_db }}
+
+# --------------------------------------------------------------------------
+# Réglages communs aux services du dépôt predict (serving, training, etl,
+# collector). Leur configuration est un YAML en couches embarqué dans l'image
+# (conf/base.yaml + conf/${PREDICT_ENV}.yaml) ; les .env générés par ce rôle
+# ne fournissent que les ${VARIABLE} que ce YAML résout dans l'environnement.
+# --------------------------------------------------------------------------
+# Racine des partitions de variables produites par l'ETL, lues par serving et
+# training. Chemin local en dev, URI s3:// vers Garage en déploiement.
+applications_predict_storage_root: "data"
+# Registre déployé par ce rôle. Chaque application a son propre projet compose,
+# donc l'alias réseau du service (`mlflow`) n'est visible que dans son projet :
+# c'est le nom de conteneur qui résout d'un projet à l'autre sur ml_network.
+applications_predict_mlflow_tracking_uri: >-
+  http://enervision-mlflow:{{ applications_mlflow_port }}
+
+# Stockage objet Garage. Il n'y a pas d'AWS ici : Garage parle le protocole
+# S3, et les clients S3 sont tous des bibliothèques AWS. Les variables AWS_*
+# sont donc les noms qu'elles lisent, et AWS_ENDPOINT_URL est précisément ce
+# qui les détourne d'amazonaws.com vers notre conteneur sur storage_network.
+#
+# Les identifiants sont produits par `garage key create` et n'ont aucune
+# valeur par défaut utilisable. Laissés vides, ils ne sont pas émis dans les
+# .env et les services retombent sur le disque local — ce qui n'a de sens que
+# si storage_root n'est pas une URI s3://.
+applications_predict_s3_endpoint_url: "http://garage:3900"
+applications_predict_s3_access_key_id: ""
+applications_predict_s3_secret_access_key: ""
+# Région annoncée par le nœud Garage (bloc [s3_api] de sa configuration). Elle
+# entre dans la signature SigV4 de chaque requête : un client qui signe pour
+# us-east-1 — le défaut de toutes ces bibliothèques dès qu'on leur donne un
+# point d'accès — se fait rejeter par un nœud qui en annonce une autre.
+applications_predict_s3_region: "{{ garage_s3_region | default('garage') }}"
+
+# --------------------------------------------------------------------------
+# API — variables du fichier .env généré (api.env.j2). Noms des clés = ceux
+# lus par app/core/config.py (pydantic-settings, MAJUSCULES).
+# --------------------------------------------------------------------------
+applications_api_app_name: "EnerVision API"
+applications_api_environment: production
+applications_api_debug: false
+# true : les endpoints protégés exigent un JWT valide (défaut de l'API, et le
+# seul réglage acceptable en production).
+applications_api_auth_enabled: true
+applications_api_jwt_algorithm: HS256
+applications_api_access_token_expire_minutes: 60
+
+# Longueur minimale exigée de la clé de signature, alignée sur
+# JWT_SECRET_MIN_LENGTH de l'API (api/app/core/config.py). Vérifiée par le
+# rôle avant tout déploiement : l'API refuserait de démarrer.
+applications_api_jwt_secret_min_length: 32
+
+# Schéma sous lequel le navigateur joint réellement les applications. Dérivé de
+# l'entrypoint Traefik plutôt qu'écrit en dur : aujourd'hui traefik_entrypoint
+# vaut "web", c'est-à-dire le port 80 en clair (voir role traefik,
+# --entrypoints.web.address=:80), et les labels TLS des routeurs applicatifs
+# sont encore commentés.
+#
+# Une origine annoncée en https alors que le service répond en http n'est pas
+# une approximation : c'est une origine DIFFÉRENTE pour le navigateur. Le CORS
+# et la CSP la refuseraient tous les deux, et l'erreur affichée parlerait de
+# blocage cross-origin sans dire que seul le schéma cloche.
+#
+# Le jour où l'on passe l'entrypoint à "websecure" et où l'on décommente les
+# labels TLS, cette variable suit toute seule et les origines avec elle.
+applications_public_scheme: "{{ 'https' if (traefik_entrypoint | default('web')) == 'websecure' else 'http' }}"
+
+# Origines autorisées à appeler l'API depuis un navigateur, séparées par des
+# virgules. Le front est servi sur une autre origine : sans cette liste, le
+# navigateur bloque toutes ses requêtes. Jamais de joker, l'API le refuse au
+# démarrage et le rôle avant elle.
+applications_api_cors_allowed_origins: "{{ applications_public_scheme }}://{{ applications_front_host }}"
+
+# --------------------------------------------------------------------------
+# Configuration du front, lue au DÉMARRAGE du conteneur et non figée au build.
+#
+# L'image du dashboard est construite une seule fois par commit, épinglée par
+# applications_front_sha, puis déployée telle quelle : y figer des domaines
+# imposerait une image par environnement, et le SHA ne suffirait plus à savoir
+# ce qui tourne. Le front lit donc sa configuration de l'environnement, comme
+# api et predict.
+#
+# Les deux variables ci-dessous dérivent des hôtes déjà déclarés plus haut, et
+# du schéma dérivé de l'entrypoint Traefik : aucun domaine ni schéma n'est
+# écrit deux fois, et une surcharge d'environnement les emmène toutes les
+# deux.
+# --------------------------------------------------------------------------
+
+# Origines que le navigateur a le droit d'appeler depuis le dashboard
+# (directive connect-src de sa CSP), séparées par des espaces. Symétrique de
+# applications_api_cors_allowed_origins : celle-ci autorise l'émission de la
+# requête, l'autre la lecture de la réponse. Les deux sont nécessaires.
+# Jamais de joker : il rendrait l'en-tête inutile.
+applications_front_csp_connect_src: "{{ applications_public_scheme }}://{{ applications_api_host }}"
+
+# Adresse de l'API métier, telle que le navigateur doit la joindre — donc
+# l'hôte public, pas le nom de service Docker : c'est le poste de l'utilisateur
+# qui émet l'appel, pas le conteneur du front.
+applications_front_api_base_url: "{{ applications_public_scheme }}://{{ applications_api_host }}"
+
+# Origine de la série prédite : api (défaut) ou fixture. fixture n'a de sens
+# qu'en environnement de démonstration, avant que des prédictions ne soient
+# archivées en base ; le dashboard affiche alors un bandeau qui le dit.
+applications_front_prediction_source: "api"
+# applications_api_jwt_secret : OBLIGATOIRE, sans valeur par défaut. Émis en
+# JWT_SECRET, doit faire au moins 32 caractères sinon l'API refuse de
+# démarrer. Défini dans group_vars par indirection Vault.
+
+# --------------------------------------------------------------------------
+# MLflow — registre de modèles et journal des entraînements. Porté par l'image
+# predict/training, qui embarque MLflow et sert aussi de serveur : une seule
+# image pour le client et le serveur garantit qu'ils sont de la même version,
+# un écart entre les deux produisant des runs illisibles dans l'interface.
+#
+# C'est le pivot de la chaîne ML : training y enregistre ses versions, serving
+# y résout l'alias du modèle qu'il sert. Sans lui, serving démarre et refuse
+# les prévisions en 503.
+# --------------------------------------------------------------------------
+# Backend store : le Model Registry exige une base, un file store ne suffit
+# pas — et sans registre, serving n'aurait pas d'alias à résoudre. SQLite dans
+# le volume, hors image, pour que les runs survivent à un redéploiement.
+applications_mlflow_backend_store_uri: "sqlite:////mlruns/mlflow.db"
+# Artefacts servis par le registre lui-même (proxy). Une URI s3:// vers Garage
+# est acceptée : le service prend alors storage_network et les clés S3.
+applications_mlflow_artifacts_destination: "/mlruns/artifacts"
+# MLflow 3 refuse tout en-tête Host qu'il ne reconnaît pas, par protection
+# contre le DNS rebinding, et répond 403 — y compris à ses propres clients.
+# Sans cette liste, training ne peut pas ouvrir de run et serving ne peut pas
+# résoudre son alias. Le domaine public y est ajouté quand la route existe.
+applications_mlflow_allowed_hosts:
+  - "enervision-mlflow:{{ applications_mlflow_port }}"
+  - "localhost:{{ applications_mlflow_port }}"
+  - "127.0.0.1:{{ applications_mlflow_port }}"
+
+# Le registre décide du modèle servi en production : déplacer un alias suffit
+# à changer les prévisions rendues aux clients, et MLflow n'a aucune
+# authentification propre. Il n'est donc pas routé par défaut — l'interface se
+# consulte par un tunnel SSH. L'exposer impose de passer par Traefik avec une
+# authentification basique, et le rôle le vérifie avant de déployer.
+applications_mlflow_expose: false
+applications_mlflow_host: "mlflow.enervision.com"
+# Lignes htpasswd `utilisateur:hash`, séparées par des virgules. Générer avec
+#   htpasswd -nbB <utilisateur> '<mot de passe>'
+# et stocker le résultat dans le vault, jamais en clair dans le dépôt.
+applications_mlflow_basic_auth_users: ""
+
+# --------------------------------------------------------------------------
+# Serving (dépôt predict, service predict/serving) — inférence en ligne.
+# Processus long derrière Traefik : il résout un alias du registre MLflow,
+# relit les partitions de variables produites par l'ETL, et sert /predict.
+# --------------------------------------------------------------------------
+applications_serving_env: production
+# Alias MLflow du modèle servi. Le déplacer dans le registre suffit à
+# promouvoir une version, sans redéployer le service.
+applications_serving_model_uri: "models:/enervision_xgboost@champion"
+
+# Clé de service exigée sur les routes du contrat d'inférence.
+#
+# Le service est routé publiquement et relaie POST /api/v1/simulate/spike, qui
+# ÉCRIT sur la source. L'API métier protège la même opération derrière le rôle
+# `writer` : tant que le service était ouvert, ce contrôle se contournait en
+# l'appelant directement.
+#
+# La MÊME valeur doit être posée en applications_predict_api_key, que l'API
+# métier et le job de rafraîchissement présentent en en-tête X-API-Key. Deux
+# valeurs différentes donnent 401 partout : aucune prévision archivée, et un
+# dashboard vide.
+#
+# Sans valeur, le service refuse de démarrer — comme l'API refuse de démarrer
+# sans JWT_SECRET. Le rôle le vérifie avant lui, cf. tasks/main.yml.
+applications_serving_api_key: ""
+# false ouvre toutes les routes. Mode du poste de développement, jamais d'un
+# déploiement : le service le journalise en avertissement à chaque démarrage.
+applications_serving_auth_enabled: true
+# Durée de conservation en mémoire de la fenêtre de variables, en secondes.
+# Le service relisait le stockage objet à CHAQUE prévision — dix journées
+# décompressées et triées pour en extraire un seul site, sept fois par cycle
+# du job de rafraîchissement. 0 désactive le cache.
+applications_serving_feature_cache_ttl_s: 300
+
+# --------------------------------------------------------------------------
+# Collector (dépôt predict, service predict/collector) — job d'ingestion de
+# la couche brute (table `mesure`). Une seule image, deux usages :
+#  - poller : processus long, interroge /current au fil de l'eau (compose) ;
+#  - backfill : rattrapage daté, rejoué chaque nuit par un timer systemd.
+# Tous deux insèrent en ON CONFLICT DO NOTHING : aucun doublon.
+# --------------------------------------------------------------------------
+applications_collector_env: production
+applications_collector_database_url: "{{ applications_predict_database_url }}"
+# API Mock IoT : source des mesures. OBLIGATOIRE, sans repli utilisable.
+# ETL d'imputation : complète les mesures trouées sans réécrire la valeur
+# brute (ADR-006). Écrit les colonnes d'imputation et mesure_exclu.
+applications_etl_env: production
+applications_etl_database_url: "{{ applications_predict_database_url }}"
+applications_etl_period_seconds: 3600
+# Journées reprises à chaque cycle, en remontant depuis le jour même. 2 et non
+# 1 : la journée en cours n'est complète qu'au lendemain, et sans reprise ses
+# dernières heures resteraient non imputées pour toujours — l'entraînement
+# apprendrait alors une fin de journée systématiquement tronquée.
+applications_etl_window_days: 2
+
+# --------------------------------------------------------------------------
+# Training (dépôt predict, service predict/training) — réentraînement du
+# modèle. Traitement daté : il apprend, enregistre une version dans MLflow,
+# et sort. Rien à maintenir en vie, donc pas de `docker compose up` : le rôle
+# dépose son compose comme pour les autres, et c'est un timer systemd qui le
+# déclenche par `docker compose run --rm` (kind: job).
+# --------------------------------------------------------------------------
+applications_training_env: production
+# Lue par --promote seul, qui inscrit la version mise en service dans la table
+# `modele`. L'apprentissage, lui, ne lit que les partitions de variables.
+applications_training_database_url: "{{ applications_predict_database_url }}"
+applications_training_experiment: "enervision-consumption"
+# Profondeur d'historique apprise, en journées (défaut du CLI training).
+applications_training_history_days: 90
+# false : la version entraînée reste challenger. Promouvoir est un geste
+# délibéré, pris après lecture des métriques du run — un modèle mis en service
+# par un timer changerait les prévisions sans que personne ne l'ait décidé.
+applications_training_promote: false
+# Hebdomadaire : le modèle apprend une saisonnalité hebdomadaire, et
+# réapprendre plus souvent coûterait des heures de calcul pour le même modèle.
+applications_training_on_calendar: "Sun *-*-* 03:30:00"
+# Un entraînement sur 90 jours et 7 sites dure des dizaines de minutes. Sans
+# borne explicite, systemd tuerait le service au bout de 90 s (défaut de
+# TimeoutStartSec) en laissant un run MLflow ouvert derrière lui.
+applications_training_timeout_seconds: 7200
+# Vrai quand l'entraînement doit exister sur l'hôte. Pilote la pose et la
+# dépose des unités systemd, comme applications_collector_backfill_active.
+applications_training_active: >-
+  {{ 'training' in applications_enabled }}
+
+# --------------------------------------------------------------------------
+# Surveillance de dérive (image predict/training, point d'entrée
+# `python -m training.drift`) — rejoue le modèle SERVI sur les mesures
+# arrivées depuis son entraînement, et dit s'il se trompe davantage qu'à sa
+# naissance.
+#
+# Un modèle ne se dégrade pas d'un coup : il se dégrade parce que le monde
+# change sous lui. Les métriques du jour de l'entraînement ne disent rien de
+# cela, puisqu'elles ont été mesurées sur des données du passé.
+# --------------------------------------------------------------------------
+applications_drift_enabled: true
+# Quotidienne, là où le réentraînement est hebdomadaire : une dégradation
+# installée depuis trois jours doit se voir avant le dimanche suivant. Après
+# le rattrapage de la collecte (02:30) et le réentraînement (03:30), pour
+# mesurer ce que la journée a réellement produit.
+applications_drift_on_calendar: "*-*-* 04:30:00"
+# Expérience MLflow des mesures de dérive. Séparée de celle des entraînements.
+applications_drift_experiment: "enervision-drift"
+# Seuil d'alerte, en rapport à l'erreur de référence du modèle. 1.5 tolère
+# 50 % de dégradation : en dessous de 1.2 le bruit d'une semaine calme suffit
+# à déclencher, au-delà de 2 on ne détecte plus qu'une panne.
+applications_drift_alert_ratio: 1.5
+# La surveillance rejoue le modèle site par site sur la fenêtre mesurée. Sans
+# borne, systemd la tuerait au bout de 90 s en laissant un run MLflow ouvert.
+applications_drift_timeout_seconds: 1800
+# Vrai quand la surveillance doit exister sur l'hôte. Elle partage l'image du
+# réentraînement : sans lui, l'image n'est pas tirée et le compose qui la
+# déclare n'est pas déposé.
+applications_drift_active: >-
+  {{ ('training' in applications_enabled) and (applications_drift_enabled | bool) }}
+
+# Job de rafraîchissement des prédictions, porté par l'image de l'API. Toutes
+# les heures : la fraîcheur assumée par l'équipe est d'au plus une heure.
+applications_predict_cron_period_seconds: 3600
+applications_predict_url: >-
+  http://enervision-serving:{{ applications_serving_port }}
+applications_predict_horizon_hours: 24
+applications_predict_timeout_seconds: 10
+
+# Clé présentée au service d'inférence par l'API métier et par le job de
+# rafraîchissement, en en-tête X-API-Key. Doit valoir exactement
+# applications_serving_api_key : c'est la même clé, vue des deux côtés.
+applications_predict_api_key: "{{ applications_serving_api_key }}"
+
+applications_collector_mock_api_url: "http://mock-iot:8000"
+
+# Fenêtre dans laquelle le poller cherche les trous au démarrage, en journées.
+#
+# Ce n'est pas la quantité recollectée : seules les journées incomplètes sont
+# redemandées à la source, et une fenêtre saine ne coûte qu'une agrégation. Un
+# redéploiement sur un serveur à jour collecte donc la journée courante.
+#
+# 35 et non 30 : « il y a un mois » doit tomber DANS la fenêtre et non sur son
+# bord. La marge couvre aussi le décalage de 168 h du jeu de variables, que
+# l'ETL exige avant de publier sa première journée.
+applications_collector_catch_up_days: 35
+applications_collector_image: >-
+  {{ applications_image_namespace }}/{{ applications_collector_image_name }}:{{ applications_collector_sha }}
+# Rattrapage nocturne. --days 2 : recouvre toujours la veille et l'avant-veille,
+# de quoi combler un poller coupé quelques heures sans jamais rien réécrire.
+applications_collector_backfill_enabled: true
+applications_collector_backfill_on_calendar: "*-*-* 02:30:00"
+applications_collector_backfill_days: 2
+# Vrai quand le rattrapage doit exister sur l'hôte (collector activé ET
+# rattrapage demandé). Pilote la pose/dépose des unités systemd.
+applications_collector_backfill_active: >-
+  {{ ('collector' in applications_enabled) and (applications_collector_backfill_enabled | bool) }}
+
+# Applications effectivement déployées. Filtre le catalogue ci-dessous : une
+# application absente de cette liste n'est ni configurée, ni tirée, ni démarrée.
+# Permet de déployer un sous-ensemble sans dépendre d'une image pas encore
+# publiée. Surchargeable dans group_vars.
+applications_enabled:
+  - front
+  - api
+  - mlflow
+  - serving
+  - training
+  - collector
+
+# Catalogue de toutes les applications connues. Le nom sert aussi de
+# sous-dossier et de préfixe de template (<name>.compose.yml.j2, <name>.env.j2).
+#
+# kind :
+#   web    — service HTTP exposé derrière Traefik (front, api, serving) ;
+#   worker — processus long sans port ni route (poller du collector). Son
+#            compose n'a ni label Traefik ni healthcheck HTTP, et les tâches
+#            de rattrapage systemd ne s'appliquent qu'à lui ;
+#   job    — traitement daté (training). Il reçoit son répertoire, son .env,
+#            son compose et son image comme les autres, mais n'est jamais
+#            démarré par `docker compose up` : un timer systemd le lance, et
+#            il sort quand il a fini.
+applications_services_catalog:
+  - name: front
+    kind: web
+    image: "{{ applications_image_namespace }}/{{ applications_front_image_name }}:{{ applications_front_sha }}"
+    sha: "{{ applications_front_sha }}"
+  - name: api
+    kind: web
+    image: "{{ applications_image_namespace }}/{{ applications_api_image_name }}:{{ applications_api_sha }}"
+    sha: "{{ applications_api_sha }}"
+  # Porté par l'image de training, qui embarque le serveur MLflow. Il n'a donc
+  # ni image ni version propres, d'où shares_image_with — comme predict-cron
+  # sur l'image de l'API. Déclaré avant serving : c'est lui qui résout l'alias
+  # du modèle, autant qu'il trouve le registre déjà debout.
+  - name: mlflow
+    kind: web
+    image: "{{ applications_image_namespace }}/{{ applications_training_image_name }}:{{ applications_training_sha }}"
+    sha: "{{ applications_training_sha }}"
+    shares_image_with: training
+  - name: serving
+    kind: web
+    image: "{{ applications_image_namespace }}/{{ applications_serving_image_name }}:{{ applications_serving_sha }}"
+    sha: "{{ applications_serving_sha }}"
+  - name: training
+    kind: job
+    image: "{{ applications_image_namespace }}/{{ applications_training_image_name }}:{{ applications_training_sha }}"
+    sha: "{{ applications_training_sha }}"
+  - name: collector
+    kind: worker
+    image: "{{ applications_image_namespace }}/{{ applications_collector_image_name }}:{{ applications_collector_sha }}"
+    sha: "{{ applications_collector_sha }}"
+  - name: etl
+    kind: worker
+    image: "{{ applications_image_namespace }}/{{ applications_etl_image_name }}:{{ applications_etl_sha }}"
+    sha: "{{ applications_etl_sha }}"
+  # Porté par l'image de l'API : le job vit dans son code
+  # (app.jobs.predict_refresh) et n'a donc ni image ni version propres. D'où
+  # shares_image_with, qui l'exclut du contrôle d'unicité des versions.
+  - name: predict-cron
+    kind: worker
+    image: "{{ applications_image_namespace }}/{{ applications_api_image_name }}:{{ applications_api_sha }}"
+    sha: "{{ applications_api_sha }}"
+    shares_image_with: api
+
+# Liste consommée par les tasks : le catalogue restreint aux applications
+# activées, dans l'ordre du catalogue.
+applications_services: "{{ applications_services_catalog | selectattr('name', 'in', applications_enabled) | list }}"

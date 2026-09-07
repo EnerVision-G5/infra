@@ -1,0 +1,5 @@
+# Dépendances de la documentation MkDocs.
+# Utilisées par docs/Dockerfile ; installables aussi en local si on veut
+# lancer `mkdocs` sans Docker (pip install -r requirements.txt).
+mkdocs-material==9.7.7
+mkdocs-awesome-nav==3.3.0

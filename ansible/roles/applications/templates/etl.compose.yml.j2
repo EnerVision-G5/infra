@@ -1,0 +1,64 @@
+# Déployé par le rôle Ansible "applications" — ne pas éditer sur l'hôte.
+# ETL d'imputation EnerVision (kind: worker).
+#
+# Complète les mesures trouées sans jamais réécrire la valeur brute que le
+# collector a déposée (ADR-006). Pas de port, pas de route Traefik.
+#
+# Tâche périodique et non processus long : elle traite un lot puis rend la
+# main. La boucle est dans l'entrypoint plutôt que dans un timer systemd,
+# contrairement au rattrapage du collector : la fenêtre glisse toute seule et
+# n'a pas de date à recevoir de l'ordonnanceur.
+#
+# La date, elle, est calculée par le service et non par ce shell. `python -m
+# etl` sans argument produit la journée du jour ; `--days` en remonte
+# plusieurs. Le shell n'a donc aucune arithmétique de dates à faire, ce qui
+# lui éviterait de dépendre d'un `date -d` que toutes les images de base
+# n'ont pas.
+services:
+  etl:
+    image: {{ applications_image_namespace }}/{{ applications_etl_image_name }}:{{ applications_etl_sha }}
+    container_name: enervision-etl
+    # Le conteneur héberge la boucle : s'il sort, plus rien n'impute.
+    restart: unless-stopped
+
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      # Un lot en échec est journalisé sans interrompre la boucle : sinon une
+      # panne passagère laisserait l'imputation morte jusqu'à la prochaine
+      # intervention.
+      #
+      # La fenêtre couvre plusieurs journées parce que la dernière n'est
+      # jamais complète : ses heures continuent d'arriver après son passage,
+      # et seule une reprise le lendemain les impute. Le rejeu est sans effet
+      # de bord — la partition est remplacée, pas allongée.
+      - >-
+        while :; do
+        python -m etl --days {{ applications_etl_window_days }}
+        || echo "ETL en echec, nouvelle tentative au prochain cycle";
+        sleep {{ applications_etl_period_seconds }};
+        done
+
+    env_file:
+      - .env
+
+    networks:
+      # Couche brute, lue et reposée.
+      - db_network
+      # Destination des partitions de variables : c'est ici que serving et
+      # training viendront les relire.
+      - storage_network
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+networks:
+  db_network:
+    external: true
+    name: db_network
+
+  storage_network:
+    external: true
+    name: storage_network

@@ -1,0 +1,175 @@
+---
+# Variables non sensibles du groupe "all".
+#
+# Les secrets (mots de passe, tokens, identifiants) NE SONT PAS ici : ils sont
+# stockés chiffrés dans `vault.yml` sous des noms préfixés `vault_*`, et
+# rattachés ci-dessous aux variables consommées par les rôles. Un seul endroit
+# à mettre à jour, et `git` ne voit jamais les valeurs en clair.
+#
+# Exécuter les playbooks avec `--ask-vault-pass` ou `--vault-password-file`.
+
+# TRAEFIK
+traefik_domain: "traefik.enervision.com"
+traefik_entrypoint: "web"
+traefik_certresolver: "letsencrypt"
+
+acme_email: "admin@enervision.com"
+
+# GARAGE
+garage_s3_host: "s3.enervision.com"
+garage_web_host: "web.enervision.com"
+garage_ui_host: "garage.enervision.com"
+garage_s3_region: "garage"
+garage_s3_root_domain: ".s3.enervision.com"
+garage_web_root_domain: ".web.enervision.com"
+
+# TIMESCALEDB
+timescaledb_db: "enervision"
+timescaledb_user: "enervision"
+
+# MONITORING
+monitoring_grafana_host: "grafana.enervision.com"
+monitoring_grafana_admin_user: "admin"
+
+# APPLICATIONS (Front / API / Serving)
+applications_front_host: "app.enervision.com"
+applications_api_host: "api.enervision.com"
+applications_serving_host: "predict.enervision.com"
+
+# --- API : contenu du .env généré (api.env.j2) ----------------------------
+# DATABASE_URL et JWT_SECRET ne sont PAS ici : l'URL est construite par le rôle
+# depuis les variables timescaledb, le secret vient du Vault (plus bas).
+applications_api_app_name: "EnerVision API"
+applications_api_environment: "production"
+applications_api_debug: false
+applications_api_auth_enabled: true
+applications_api_jwt_algorithm: "HS256"
+applications_api_access_token_expire_minutes: 60
+
+# --- Commun aux services du dépôt predict ---------------------------------
+# Partagé par etl, serving et training : une seule racine de partitions, sinon
+# l'ETL publierait ailleurs que là où l'entraînement apprend et où le service
+# d'inférence relit.
+applications_predict_storage_root: "s3://enervision-features"
+# applications_predict_mlflow_tracking_uri n'est pas repris ici : le registre
+# est déployé par le rôle, et son défaut désigne déjà le conteneur déployé.
+# Point d'accès interne de Garage (storage_network). Les identifiants
+# viennent du Vault, cf. le rattachement en bas de fichier.
+applications_predict_s3_endpoint_url: "http://garage:3900"
+
+# --- MLflow (image predict/training) : registre de modèles ----------------
+# Route Traefik ouverte, et jamais sans authentification basique : MLflow n'a
+# aucune authentification propre, et déplacer un alias dans le registre suffit
+# à changer le modèle servi en production. Le rôle refuse de déployer la route
+# tant que applications_mlflow_basic_auth_users est vide, cf. le rattachement
+# au vault en bas de fichier — hachage produit par
+# `htpasswd -nbB <utilisateur> '<mot de passe>'`.
+#
+# Le port reste publié sur la seule boucle locale de l'hôte : la route n'est
+# pas le seul chemin, et le tunnel SSH reste la voie sûre tant que
+# traefik_entrypoint vaut `web`, l'authentification basique voyageant alors en
+# clair.
+#   ssh -p 2222 -L 5000:127.0.0.1:5000 <hote>  puis http://localhost:5000
+#
+# Le domaine doit résoudre vers l'hôte avant le déploiement : sans
+# enregistrement DNS, Traefik n'a aucun Host à faire correspondre à la route.
+applications_mlflow_expose: true
+applications_mlflow_host: "mlflow.enervision.com"
+
+# --- Serving (image predict/serving) : contenu du .env (serving.env.j2) ----
+applications_serving_env: "production"
+applications_serving_model_uri: "models:/enervision_xgboost@champion"
+
+# --- Training (image predict/training) : .env + timer systemd -------------
+applications_training_env: "production"
+applications_training_experiment: "enervision-consumption"
+applications_training_history_days: 90
+# Le timer n'apprend pas et ne promeut pas dans le même geste : la mise en
+# service d'une version se décide après lecture de ses métriques, par
+# `docker compose --profile jobs run --rm training --promote-version <n>`.
+applications_training_promote: false
+applications_training_on_calendar: "Sun *-*-* 03:30:00"
+
+# --- Collector (poller + rattrapage) : contenu du .env généré (collector.env.j2)
+# DATABASE_URL est construite par le rôle (dialecte psycopg).
+applications_collector_env: "production"
+# URL de l'API Mock IoT source des mesures — À RENSEIGNER.
+applications_collector_mock_api_url: "http://10.105.200.45:8000"
+applications_collector_backfill_enabled: true
+applications_collector_backfill_on_calendar: "*-*-* 02:30:00"
+applications_collector_backfill_days: 2
+
+# Applications deployees.
+applications_enabled:
+  - front
+  - api
+  - mlflow
+  - serving
+  - training
+  - collector
+  - etl
+  - predict-cron
+
+# Version déployée de chaque image : tag GHCR immuable d'un commit précis
+# (sha-<git-sha>), lu dans le résumé du run CD ou la page Packages du dépôt
+# de service, et modifié uniquement par PR : c'est elle qui trace la mise en
+# production. Procédure complète dans le README, « Mettre en production ».
+applications_front_sha: "sha-dadeb4781911fd464e24f2f41eccf178e7b52ffb"
+applications_api_sha: "sha-665d1e5a553e7cecbf4e19e5f9d01228fdf061a3"
+# serving, training et etl sont publiés depuis le dépôt predict : un même
+# commit leur donne le même tag, sur trois images distinctes. C'est le couple
+# image:tag qui identifie une version, et le rôle contrôle son unicité là.
+applications_serving_sha: "sha-48709c643fd223e9e23326754c9609409e685189"
+applications_training_sha: "sha-da9407f5ad00560406ea4fc46d7a3d398610c452"
+applications_etl_sha: "sha-da9407f5ad00560406ea4fc46d7a3d398610c452"
+applications_collector_sha: "sha-48709c643fd223e9e23326754c9609409e685189"
+
+# DOCKER
+docker_external_networks:
+  - "proxy_network"
+  - "api_network"
+  - "db_network"
+  - "storage_network"
+  - "ml_network"
+  - "monitoring_network"
+
+# --------------------------------------------------------------------------
+# Rattachement des secrets — valeurs réelles dans vault.yml (chiffré).
+# --------------------------------------------------------------------------
+garage_rpc_secret: "{{ vault_garage_rpc_secret }}"
+garage_admin_token: "{{ vault_garage_admin_token }}"
+garage_metrics_token: "{{ vault_garage_metrics_token }}"
+
+timescaledb_password: "{{ vault_timescaledb_password }}"
+
+ghcr_username: "{{ vault_ghcr_username }}"
+ghcr_token: "{{ vault_ghcr_token }}"
+
+monitoring_grafana_admin_password: "{{ vault_monitoring_grafana_admin_password }}"
+
+# Clé S3 lue par serving et training pour atteindre Garage. Produite par
+# `garage key create`, jamais choisie à la main. Le `default('')` laisse le
+# rôle nommer précisément ce qui manque tant que le Vault ne la porte pas,
+# plutôt que d'échouer sur une variable indéfinie.
+applications_predict_s3_access_key_id: "{{ vault_garage_s3_access_key_id | default('') }}"
+applications_predict_s3_secret_access_key: "{{ vault_garage_s3_secret_access_key | default('') }}"
+
+# Identifiants de l'authentification basique devant MLflow, au format htpasswd
+# (`htpasswd -nbB <utilisateur> '<mot de passe>'`). Lus seulement quand
+# applications_mlflow_expose est vrai ; le rôle refuse alors de déployer une
+# route sans eux.
+applications_mlflow_basic_auth_users: "{{ vault_applications_mlflow_basic_auth_users | default('') }}"
+
+# Émis en JWT_SECRET dans api.env. >= 32 caractères, sinon l'API refuse de
+# démarrer. La clé Vault garde son nom historique (vault_applications_api_secret_key)
+# pour ne pas avoir à rechiffrer le Vault ; générer une valeur avec
+#   python -c "import secrets; print(secrets.token_urlsafe(48))"
+applications_api_jwt_secret: "{{ vault_applications_api_secret_key }}"
+
+# Clé de service du moteur d'inférence, exigée sur les routes de son contrat.
+# Une seule valeur pour trois consommateurs : le service la vérifie, l'API
+# métier et le job de rafraîchissement la présentent en en-tête X-API-Key.
+# Le rôle refuse de déployer si elle manque, ou si les deux côtés divergent.
+#
+#   python -c "import secrets; print(secrets.token_urlsafe(48))"
+applications_serving_api_key: "{{ vault_serving_api_key | default('') }}"

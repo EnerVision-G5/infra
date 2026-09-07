@@ -1,0 +1,35 @@
+---
+- name: Create timescaledb directory
+  ansible.builtin.file:
+    path: "{{ timescaledb_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Generate timescaledb docker compose file
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ timescaledb_dir }}/compose.yml"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Generate timescaledb environment file
+  ansible.builtin.template:
+    src: db.env.j2
+    dest: "{{ timescaledb_dir }}/.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Deploy timescaledb
+  community.docker.docker_compose_v2:
+    project_src: "{{ timescaledb_dir }}"
+    files:
+      - compose.yml
+    env_files:
+      - .env
+    state: present

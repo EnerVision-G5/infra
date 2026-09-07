@@ -1,0 +1,23 @@
+---
+# Répertoire de déploiement sur l'hôte (même convention que les autres rôles)
+monitoring_dir: /opt/srv/monitoring
+
+# Images épinglées
+monitoring_grafana_image: "grafana/grafana:11.4.0"
+monitoring_prometheus_image: "prom/prometheus:v3.1.0"
+monitoring_loki_image: "grafana/loki:3.3.2"
+monitoring_promtail_image: "grafana/promtail:3.3.2"
+monitoring_node_exporter_image: "prom/node-exporter:v1.8.2"
+monitoring_cadvisor_image: "gcr.io/cadvisor/cadvisor:v0.52.1"
+
+# Rétention des séries Prometheus
+monitoring_prometheus_retention: "15d"
+
+# Port interne de Grafana (exposé uniquement via Traefik)
+monitoring_grafana_port: 3000
+
+# monitoring_grafana_host / monitoring_grafana_admin_user /
+# monitoring_grafana_admin_password : définis dans group_vars (mot de passe
+# idéalement chiffré avec ansible-vault). Pas de valeur par défaut pour le
+# secret volontairement.
+monitoring_grafana_admin_user: admin

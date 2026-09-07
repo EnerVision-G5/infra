@@ -1,0 +1,50 @@
+# Déployé par le rôle Ansible "applications" — ne pas éditer sur l'hôte.
+# API EnerVision (FastAPI / uvicorn) — image épinglée sur applications_api_sha.
+services:
+  api:
+    image: {{ applications_image_namespace }}/{{ applications_api_image_name }}:{{ applications_api_sha }}
+    container_name: enervision-api
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    networks:
+      - proxy_network
+      - db_network
+      - ml_network
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request,sys;
+          sys.exit(0 if urllib.request.urlopen('http://localhost:{{ applications_api_port }}/docs').status == 200 else 1)"
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy_network"
+
+      - 'traefik.http.routers.enervision-api.rule=Host(`{{ applications_api_host }}`)'
+      - "traefik.http.routers.enervision-api.entrypoints={{ traefik_entrypoint }}"
+      # - "traefik.http.routers.enervision-api.tls=true"
+      # - "traefik.http.routers.enervision-api.tls.certresolver={{ traefik_certresolver }}"
+      - "traefik.http.routers.enervision-api.service=enervision-api"
+      - "traefik.http.services.enervision-api.loadbalancer.server.port={{ applications_api_port }}"
+
+networks:
+  proxy_network:
+    external: true
+    name: proxy_network
+
+  db_network:
+    external: true
+    name: db_network
+
+  ml_network:
+    external: true
+    name: ml_network

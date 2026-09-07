@@ -1,0 +1,17 @@
+name: enervision-docs
+
+# Documentation servie en local uniquement, avec rechargement à chaud.
+#   docs/ $ docker compose up          -> http://localhost:8000
+#   docs/ $ docker compose run --rm docs build --strict   -> build de contrôle
+services:
+  docs:
+    build: .
+    container_name: enervision-docs
+    ports:
+      - "8060:8060"
+    volumes:
+      # Tout docs/ est monté sur /docs : content/, mkdocs.yml, et le build
+      # écrit dans docs/site/ (ignoré par Git). Le rechargement à chaud suit
+      # toute modif de content/ ou de mkdocs.yml.
+      - .:/docs
+    command: serve --dev-addr 0.0.0.0:8060

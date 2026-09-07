@@ -1,0 +1,94 @@
+services:
+  garage:
+    image: dxflrs/garage:v2.0.0
+    container_name: garage
+    restart: unless-stopped
+
+    command:
+      - /garage
+      - server
+
+    volumes:
+      - ./garage.toml:/etc/garage.toml:ro
+      - garage_metadata:/var/lib/garage/meta
+      - garage_data:/var/lib/garage/data
+      - garage_snapshots:/var/lib/garage/snapshots
+
+    networks:
+      - storage_network
+      - proxy_network
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy_network"
+
+      - 'traefik.http.routers.garage-s3.rule=Host(`{{ garage_s3_host }}`) || HostRegexp(`[a-z0-9-]+\.{{ garage_s3_host | replace(".", "\\.") }}`)'
+      - "traefik.http.routers.garage-s3.entrypoints={{ traefik_entrypoint }}"
+      # - "traefik.http.routers.garage-s3.tls=true"
+      # - "traefik.http.routers.garage-s3.tls.certresolver={{ traefik_certresolver }}"
+      - "traefik.http.routers.garage-s3.service=garage-s3"
+      - "traefik.http.services.garage-s3.loadbalancer.server.port=3900"
+
+      - 'traefik.http.routers.garage-web.rule=Host(`{{ garage_web_host }}`) || HostRegexp(`[a-z0-9-]+\.{{ garage_web_host | replace(".", "\\.") }}`)'
+      - "traefik.http.routers.garage-web.entrypoints={{ traefik_entrypoint }}"
+      # - "traefik.http.routers.garage-web.tls=true"
+      # - "traefik.http.routers.garage-web.tls.certresolver={{ traefik_certresolver }}"
+      - "traefik.http.routers.garage-web.service=garage-web"
+      - "traefik.http.services.garage-web.loadbalancer.server.port=3902"
+
+    healthcheck:
+      test:
+        - CMD
+        - /garage
+        - status
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  garage-webui:
+    image: khairul169/garage-webui:1.1.0
+    container_name: garage-webui
+    restart: unless-stopped
+
+    environment:
+      API_BASE_URL: "http://garage:3903"
+      API_ADMIN_KEY: "{{ garage_admin_token }}"
+      S3_REGION: "{{ garage_s3_region }}"
+      S3_ENDPOINT_URL: "http://garage:3900"
+
+    volumes:
+      - ./garage.toml:/etc/garage.toml:ro
+
+    networks:
+      - storage_network
+      - proxy_network
+
+    depends_on:
+      garage:
+        condition: service_healthy
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy_network"
+
+      - 'traefik.http.routers.garage-ui.rule=Host(`{{ garage_ui_host }}`)'
+      - "traefik.http.routers.garage-ui.entrypoints=web"
+      # - "traefik.http.routers.garage-ui.tls=true"
+      # - "traefik.http.routers.garage-ui.tls.certresolver={{ traefik_certresolver }}"
+      - "traefik.http.routers.garage-ui.service=garage-ui"
+      - "traefik.http.services.garage-ui.loadbalancer.server.port=3909"
+
+volumes:
+  garage_data:
+  garage_metadata:
+  garage_snapshots:
+
+networks:
+  storage_network:
+    external: true
+    name: storage_network
+
+  proxy_network:
+    external: true
+    name: proxy_network
