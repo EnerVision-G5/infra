@@ -36,6 +36,40 @@ services:
         max-size: "10m"
         max-file: "5"
 
+  # Surveillance de dérive. Même image que l'entraînement — c'est le même
+  # paquet — mais un autre point d'entrée : `python -m training.drift` là où
+  # l'image sert `python -m training`. Déclarée ici plutôt que dans son propre
+  # compose pour cette raison : deux répertoires de déploiement pour une seule
+  # image feraient deux endroits où épingler la même version.
+  #
+  # Derrière le profil `jobs` comme l'entraînement, et jamais démarrée par un
+  # `up`. C'est drift.timer qui la lance, quotidiennement.
+  #
+  # Le code de sortie porte le verdict : 0 stable, 2 dérive, 1 le calcul a
+  # échoué. Voir drift.service pour ce que systemd en fait.
+  drift:
+    image: {{ applications_image_namespace }}/{{ applications_training_image_name }}:{{ applications_training_sha }}
+    profiles: ["jobs"]
+    restart: "no"
+    entrypoint: ["python", "-m", "training.drift"]
+
+    env_file:
+      - .env
+
+    networks:
+      # Registre MLflow : la surveillance y résout le modèle SERVI, et y
+      # dépose ses mesures dans sa propre expérience.
+      - ml_network
+      # Partitions de variables : c'est sur elles qu'elle rejoue le modèle,
+      # pas sur la couche brute.
+      - storage_network
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
 networks:
   ml_network:
     external: true

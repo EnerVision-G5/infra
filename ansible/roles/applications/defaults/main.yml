@@ -236,6 +236,30 @@ applications_serving_env: production
 # promouvoir une version, sans redéployer le service.
 applications_serving_model_uri: "models:/enervision_xgboost@champion"
 
+# Clé de service exigée sur les routes du contrat d'inférence.
+#
+# Le service est routé publiquement et relaie POST /api/v1/simulate/spike, qui
+# ÉCRIT sur la source. L'API métier protège la même opération derrière le rôle
+# `writer` : tant que le service était ouvert, ce contrôle se contournait en
+# l'appelant directement.
+#
+# La MÊME valeur doit être posée en applications_predict_api_key, que l'API
+# métier et le job de rafraîchissement présentent en en-tête X-API-Key. Deux
+# valeurs différentes donnent 401 partout : aucune prévision archivée, et un
+# dashboard vide.
+#
+# Sans valeur, le service refuse de démarrer — comme l'API refuse de démarrer
+# sans JWT_SECRET. Le rôle le vérifie avant lui, cf. tasks/main.yml.
+applications_serving_api_key: ""
+# false ouvre toutes les routes. Mode du poste de développement, jamais d'un
+# déploiement : le service le journalise en avertissement à chaque démarrage.
+applications_serving_auth_enabled: true
+# Durée de conservation en mémoire de la fenêtre de variables, en secondes.
+# Le service relisait le stockage objet à CHAQUE prévision — dix journées
+# décompressées et triées pour en extraire un seul site, sept fois par cycle
+# du job de rafraîchissement. 0 désactive le cache.
+applications_serving_feature_cache_ttl_s: 300
+
 # --------------------------------------------------------------------------
 # Collector (dépôt predict, service predict/collector) — job d'ingestion de
 # la couche brute (table `mesure`). Une seule image, deux usages :
@@ -251,6 +275,11 @@ applications_collector_database_url: "{{ applications_predict_database_url }}"
 applications_etl_env: production
 applications_etl_database_url: "{{ applications_predict_database_url }}"
 applications_etl_period_seconds: 3600
+# Journées reprises à chaque cycle, en remontant depuis le jour même. 2 et non
+# 1 : la journée en cours n'est complète qu'au lendemain, et sans reprise ses
+# dernières heures resteraient non imputées pour toujours — l'entraînement
+# apprendrait alors une fin de journée systématiquement tronquée.
+applications_etl_window_days: 2
 
 # --------------------------------------------------------------------------
 # Training (dépôt predict, service predict/training) — réentraînement du
@@ -282,6 +311,37 @@ applications_training_timeout_seconds: 7200
 applications_training_active: >-
   {{ 'training' in applications_enabled }}
 
+# --------------------------------------------------------------------------
+# Surveillance de dérive (image predict/training, point d'entrée
+# `python -m training.drift`) — rejoue le modèle SERVI sur les mesures
+# arrivées depuis son entraînement, et dit s'il se trompe davantage qu'à sa
+# naissance.
+#
+# Un modèle ne se dégrade pas d'un coup : il se dégrade parce que le monde
+# change sous lui. Les métriques du jour de l'entraînement ne disent rien de
+# cela, puisqu'elles ont été mesurées sur des données du passé.
+# --------------------------------------------------------------------------
+applications_drift_enabled: true
+# Quotidienne, là où le réentraînement est hebdomadaire : une dégradation
+# installée depuis trois jours doit se voir avant le dimanche suivant. Après
+# le rattrapage de la collecte (02:30) et le réentraînement (03:30), pour
+# mesurer ce que la journée a réellement produit.
+applications_drift_on_calendar: "*-*-* 04:30:00"
+# Expérience MLflow des mesures de dérive. Séparée de celle des entraînements.
+applications_drift_experiment: "enervision-drift"
+# Seuil d'alerte, en rapport à l'erreur de référence du modèle. 1.5 tolère
+# 50 % de dégradation : en dessous de 1.2 le bruit d'une semaine calme suffit
+# à déclencher, au-delà de 2 on ne détecte plus qu'une panne.
+applications_drift_alert_ratio: 1.5
+# La surveillance rejoue le modèle site par site sur la fenêtre mesurée. Sans
+# borne, systemd la tuerait au bout de 90 s en laissant un run MLflow ouvert.
+applications_drift_timeout_seconds: 1800
+# Vrai quand la surveillance doit exister sur l'hôte. Elle partage l'image du
+# réentraînement : sans lui, l'image n'est pas tirée et le compose qui la
+# déclare n'est pas déposé.
+applications_drift_active: >-
+  {{ ('training' in applications_enabled) and (applications_drift_enabled | bool) }}
+
 # Job de rafraîchissement des prédictions, porté par l'image de l'API. Toutes
 # les heures : la fraîcheur assumée par l'équipe est d'au plus une heure.
 applications_predict_cron_period_seconds: 3600
@@ -290,7 +350,23 @@ applications_predict_url: >-
 applications_predict_horizon_hours: 24
 applications_predict_timeout_seconds: 10
 
+# Clé présentée au service d'inférence par l'API métier et par le job de
+# rafraîchissement, en en-tête X-API-Key. Doit valoir exactement
+# applications_serving_api_key : c'est la même clé, vue des deux côtés.
+applications_predict_api_key: "{{ applications_serving_api_key }}"
+
 applications_collector_mock_api_url: "http://mock-iot:8000"
+
+# Fenêtre dans laquelle le poller cherche les trous au démarrage, en journées.
+#
+# Ce n'est pas la quantité recollectée : seules les journées incomplètes sont
+# redemandées à la source, et une fenêtre saine ne coûte qu'une agrégation. Un
+# redéploiement sur un serveur à jour collecte donc la journée courante.
+#
+# 35 et non 30 : « il y a un mois » doit tomber DANS la fenêtre et non sur son
+# bord. La marge couvre aussi le décalage de 168 h du jeu de variables, que
+# l'ETL exige avant de publier sa première journée.
+applications_collector_catch_up_days: 35
 applications_collector_image: >-
   {{ applications_image_namespace }}/{{ applications_collector_image_name }}:{{ applications_collector_sha }}
 # Rattrapage nocturne. --days 2 : recouvre toujours la veille et l'avant-veille,

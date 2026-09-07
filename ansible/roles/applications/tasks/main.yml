@@ -24,6 +24,50 @@
     quiet: true
   when: "'api' in applications_enabled"
 
+# Le service d'inférence est routé publiquement et relaie la simulation de
+# pic, qui ÉCRIT sur la source. L'API métier protège la même opération derrière
+# le rôle `writer` : un service ouvert rend ce contrôle contournable, il suffit
+# de l'appeler directement.
+#
+# Vérifié ici plutôt que laissé au service : celui-ci refuse bien de démarrer
+# sans clé, mais l'échec arriverait alors après le déploiement, sur un
+# conteneur qui redémarre en boucle. Autant le dire avant d'y toucher.
+- name: Vérifier que le service d'inférence a une clé de service
+  ansible.builtin.assert:
+    that:
+      - applications_serving_api_key | default('') | length > 0
+    fail_msg: >-
+      applications_serving_api_key est vide alors que le service d'inférence
+      exige une clé sur les routes de son contrat. Générer une valeur avec
+      `python -c "import secrets; print(secrets.token_urlsafe(48))"`, la
+      stocker dans le vault, ou poser applications_serving_auth_enabled à
+      false — ce dernier mode ouvre toutes les routes et ne vaut que pour un
+      poste de développement.
+    quiet: true
+  no_log: true
+  when:
+    - "'serving' in applications_enabled"
+    - applications_serving_auth_enabled | bool
+
+# La clé est la même des deux côtés : le service l'exige, l'API métier et le
+# job de rafraîchissement la présentent. Deux valeurs différentes ne cassent
+# rien au déploiement — elles donnent 401 sur chaque appel, aucune prévision
+# archivée, et un dashboard vide que personne ne rattache à cette cause.
+- name: Vérifier que l'API et le service d'inférence portent la même clé
+  ansible.builtin.assert:
+    that:
+      - applications_predict_api_key == applications_serving_api_key
+    fail_msg: >-
+      applications_predict_api_key diffère de applications_serving_api_key.
+      C'est la même clé vue des deux côtés : le service l'exige, l'API la
+      présente. Un écart donne 401 sur chaque appel, sans rien casser au
+      déploiement.
+    quiet: true
+  no_log: true
+  when:
+    - applications_serving_auth_enabled | bool
+    - applications_enabled | intersect(['serving', 'api', 'predict-cron']) | length > 1
+
 # L'ETL publie les partitions de variables, serving les relit et training les
 # apprend : sans identifiants, les trois démarrent, ne trouvent rien, et ne le
 # disent qu'à la première prévision demandée.
@@ -321,4 +365,53 @@
     - training.service
     - training.timer
   when: not (applications_training_active | bool)
+  notify: Reload systemd
+
+# --------------------------------------------------------------------------
+# Surveillance de dérive : même schéma que le réentraînement, sur le même
+# compose et la même image, avec un autre point d'entrée. Quotidienne là où
+# l'entraînement est hebdomadaire — une dégradation installée depuis trois
+# jours doit se voir avant le dimanche suivant.
+#
+# Sans ces unités, le module existe, il est testé, il a sa commande, et rien
+# ne le lance : le projet n'a alors aucune détection automatique de la
+# dégradation du modèle en service.
+# --------------------------------------------------------------------------
+- name: Installer les unités systemd de la surveillance de dérive
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - drift.service
+    - drift.timer
+  when: applications_drift_active | bool
+  notify: Reload systemd
+
+- name: Activer et planifier la surveillance de dérive
+  ansible.builtin.systemd_service:
+    name: drift.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: applications_drift_active | bool
+
+- name: Retirer la surveillance de dérive quand elle est désactivée
+  ansible.builtin.systemd_service:
+    name: drift.timer
+    enabled: false
+    state: stopped
+  failed_when: false
+  when: not (applications_drift_active | bool)
+
+- name: Retirer les unités systemd de la surveillance quand elle est désactivée
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}"
+    state: absent
+  loop:
+    - drift.service
+    - drift.timer
+  when: not (applications_drift_active | bool)
   notify: Reload systemd
