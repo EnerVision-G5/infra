@@ -69,6 +69,53 @@ applications_networks:
   - ml_network
   - monitoring_network
 
+# --------------------------------------------------------------------------
+# Garde-fous ressources par conteneur.
+#
+# La VM on-premise porte TOUTE la stack (Traefik, Garage, TimescaleDB,
+# monitoring, applications) sur 4 vCPU / 8 Go. Sans plafond, un pic de l'ETL
+# ou un entraînement peut monopoliser la VM et faire tomber la base ou l'API.
+#
+# `cpus` est un PLAFOND, pas une réservation : la somme sur tous les
+# conteneurs de l'hôte dépasse volontairement 4, le noyau arbitre la
+# contention. `memory` est le garde-fou anti-OOM (le conteneur est tué s'il
+# le dépasse) — le poser trop bas fait redémarrer le service en boucle.
+#
+# training et drift sont des traitements datés lancés par timer : leurs
+# plafonds sont plus larges (ils tournent la nuit, staggerés), mais restent
+# les premières valeurs à baisser si un OOM-kill apparaît.
+# --------------------------------------------------------------------------
+applications_front_memory_limit: 96M
+applications_front_cpu_limit: "0.25"
+
+applications_api_memory_limit: 768M
+applications_api_cpu_limit: "1.5"
+
+applications_serving_memory_limit: 1G
+applications_serving_cpu_limit: "2.0"
+
+applications_mlflow_memory_limit: 768M
+applications_mlflow_cpu_limit: "1.0"
+
+applications_collector_memory_limit: 384M
+applications_collector_cpu_limit: "0.5"
+
+# Rattrapage daté du collector (docker run lancé par systemd, pas compose).
+applications_collector_backfill_memory_limit: 384M
+applications_collector_backfill_cpu_limit: "1.0"
+
+applications_etl_memory_limit: 512M
+applications_etl_cpu_limit: "1.0"
+
+applications_predict_cron_memory_limit: 512M
+applications_predict_cron_cpu_limit: "0.5"
+
+applications_training_memory_limit: 3G
+applications_training_cpu_limit: "3.0"
+
+applications_drift_memory_limit: 2G
+applications_drift_cpu_limit: "2.0"
+
 # Connexion applicative à la base (construite à partir des variables du rôle
 # timescaledb ; le mot de passe vient de group_vars chiffré avec ansible-vault).
 #

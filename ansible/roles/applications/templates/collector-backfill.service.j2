@@ -10,8 +10,13 @@ Type=oneshot
 # Même image que le poller. --date aujourd'hui + --days {{ applications_collector_backfill_days }}
 # rejoue la fenêtre glissante ; l'insertion ON CONFLICT DO NOTHING garantit
 # qu'aucune ligne déjà écrite au fil de l'eau n'est touchée.
+# --cpus / --memory : mêmes garde-fous que les conteneurs du compose, la VM
+# 4 vCPU / 8 Go portant toute la stack. Le rattrapage tourne la nuit (02:30),
+# staggeré avec l'entraînement et la surveillance de dérive.
 ExecStart=/bin/sh -c '/usr/bin/docker run --rm \
   --network db_network \
+  --cpus {{ applications_collector_backfill_cpu_limit }} \
+  --memory {{ applications_collector_backfill_memory_limit }} \
   --env-file {{ applications_dir }}/collector/.env \
   {{ applications_collector_image }} \
   --date "$(date -u +%%F)" --days {{ applications_collector_backfill_days }}'

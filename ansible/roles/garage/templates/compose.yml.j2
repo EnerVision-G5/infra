@@ -46,6 +46,13 @@ services:
       retries: 5
       start_period: 30s
 
+    # Plafonds ressources sur une VM 4 vCPU / 8 Go partagée par toute la stack.
+    deploy:
+      resources:
+        limits:
+          memory: {{ garage_memory_limit }}
+          cpus: "{{ garage_cpu_limit }}"
+
   garage-webui:
     image: khairul169/garage-webui:1.1.0
     container_name: garage-webui
@@ -78,6 +85,13 @@ services:
       # - "traefik.http.routers.garage-ui.tls.certresolver={{ traefik_certresolver }}"
       - "traefik.http.routers.garage-ui.service=garage-ui"
       - "traefik.http.services.garage-ui.loadbalancer.server.port=3909"
+
+    # Plafonds ressources sur une VM 4 vCPU / 8 Go partagée par toute la stack.
+    deploy:
+      resources:
+        limits:
+          memory: {{ garage_webui_memory_limit }}
+          cpus: "{{ garage_webui_cpu_limit }}"
 
 volumes:
   garage_data:

@@ -18,3 +18,12 @@ garage_layout_zone: "dc1"
 # (Garage l'utilise pour répartir entre nœuds) ; la garder cohérente avec
 # l'espace réellement dispo pour le volume garage_data.
 garage_layout_capacity: "64G"
+
+# Garde-fous ressources des conteneurs. La VM on-premise porte toute la stack
+# (4 vCPU / 8 Go) : ce sont des plafonds anti-contention et anti-OOM, pas des
+# réservations. La somme des `cpus` de tous les conteneurs peut dépasser 4.
+garage_memory_limit: 768M
+garage_cpu_limit: "1.0"
+
+garage_webui_memory_limit: 128M
+garage_webui_cpu_limit: "0.25"
