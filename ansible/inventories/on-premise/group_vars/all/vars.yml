@@ -114,7 +114,7 @@ applications_enabled:
 # (sha-<git-sha>), lu dans le résumé du run CD ou la page Packages du dépôt
 # de service, et modifié uniquement par PR : c'est elle qui trace la mise en
 # production. Procédure complète dans le README, « Mettre en production ».
-applications_front_sha: "sha-dadeb4781911fd464e24f2f41eccf178e7b52ffb"
+applications_front_sha: "sha-eb29a117dae590a8d0bbc9030f19ed2c2dae3246"
 applications_api_sha: "sha-665d1e5a553e7cecbf4e19e5f9d01228fdf061a3"
 # serving, training et etl sont publiés depuis le dépôt predict : un même
 # commit leur donne le même tag, sur trois images distinctes. C'est le couple
