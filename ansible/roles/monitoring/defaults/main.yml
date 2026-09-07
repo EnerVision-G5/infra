@@ -21,3 +21,24 @@ monitoring_grafana_port: 3000
 # idéalement chiffré avec ansible-vault). Pas de valeur par défaut pour le
 # secret volontairement.
 monitoring_grafana_admin_user: admin
+
+# Garde-fous ressources des conteneurs. La VM on-premise porte toute la stack
+# (4 vCPU / 8 Go) : ce sont des plafonds anti-contention et anti-OOM, pas des
+# réservations. La somme des `cpus` de tous les conteneurs peut dépasser 4.
+monitoring_grafana_memory_limit: 384M
+monitoring_grafana_cpu_limit: "0.75"
+
+monitoring_prometheus_memory_limit: 768M
+monitoring_prometheus_cpu_limit: "1.0"
+
+monitoring_loki_memory_limit: 384M
+monitoring_loki_cpu_limit: "0.75"
+
+monitoring_promtail_memory_limit: 128M
+monitoring_promtail_cpu_limit: "0.25"
+
+monitoring_node_exporter_memory_limit: 96M
+monitoring_node_exporter_cpu_limit: "0.25"
+
+monitoring_cadvisor_memory_limit: 256M
+monitoring_cadvisor_cpu_limit: "0.5"

@@ -36,6 +36,14 @@ services:
       - "traefik.http.routers.enervision-api.service=enervision-api"
       - "traefik.http.services.enervision-api.loadbalancer.server.port={{ applications_api_port }}"
 
+    # Plafonds ressources : la VM 4 vCPU / 8 Go porte toute la stack. `cpus`
+    # est un plafond (somme sur l'hôte > 4), `memory` le garde-fou anti-OOM.
+    deploy:
+      resources:
+        limits:
+          memory: {{ applications_api_memory_limit }}
+          cpus: "{{ applications_api_cpu_limit }}"
+
 networks:
   proxy_network:
     external: true

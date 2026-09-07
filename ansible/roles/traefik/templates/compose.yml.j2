@@ -47,6 +47,13 @@ services:
       # - traefik.http.routers.traefik.tls.certresolver=letsencrypt
       - traefik.http.routers.traefik.service=api@internal
 
+    # Plafonds ressources sur une VM 4 vCPU / 8 Go partagée par toute la stack.
+    deploy:
+      resources:
+        limits:
+          memory: {{ traefik_memory_limit }}
+          cpus: "{{ traefik_cpu_limit }}"
+
 volumes:
   traefik_letsencrypt:
 

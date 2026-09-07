@@ -62,6 +62,14 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+
+    # Plafonds ressources : la VM 4 vCPU / 8 Go porte toute la stack. `cpus`
+    # est un plafond (somme sur l'hôte > 4), `memory` le garde-fou anti-OOM.
+    deploy:
+      resources:
+        limits:
+          memory: {{ applications_mlflow_memory_limit }}
+          cpus: "{{ applications_mlflow_cpu_limit }}"
 {% if applications_mlflow_expose | bool %}
 
     # MLflow n'a aucune authentification propre, et déplacer un alias dans le

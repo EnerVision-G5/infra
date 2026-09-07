@@ -29,6 +29,14 @@ services:
         max-size: "10m"
         max-file: "5"
 
+    # Plafonds ressources : la VM 4 vCPU / 8 Go porte toute la stack. `cpus`
+    # est un plafond (somme sur l'hôte > 4), `memory` le garde-fou anti-OOM.
+    deploy:
+      resources:
+        limits:
+          memory: {{ applications_collector_memory_limit }}
+          cpus: "{{ applications_collector_cpu_limit }}"
+
 networks:
   db_network:
     external: true
