@@ -168,3 +168,11 @@ applications_mlflow_basic_auth_users: "{{ vault_applications_mlflow_basic_auth_u
 # pour ne pas avoir à rechiffrer le Vault ; générer une valeur avec
 #   python -c "import secrets; print(secrets.token_urlsafe(48))"
 applications_api_jwt_secret: "{{ vault_applications_api_secret_key }}"
+
+# Clé de service du moteur d'inférence, exigée sur les routes de son contrat.
+# Une seule valeur pour trois consommateurs : le service la vérifie, l'API
+# métier et le job de rafraîchissement la présentent en en-tête X-API-Key.
+# Le rôle refuse de déployer si elle manque, ou si les deux côtés divergent.
+#
+#   python -c "import secrets; print(secrets.token_urlsafe(48))"
+applications_serving_api_key: "{{ vault_serving_api_key | default('') }}"
