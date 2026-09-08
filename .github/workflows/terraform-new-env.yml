@@ -32,12 +32,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout develop
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: develop
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.16.0"
           terraform_wrapper: false

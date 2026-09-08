@@ -55,7 +55,7 @@ jobs:
       apply: ${{ steps.detect.outputs.apply }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -119,14 +119,14 @@ jobs:
         working-directory: terraform/${{ matrix.env }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Version Terraform de l'environnement
         id: tfv
         run: echo "version=$(cat .terraform-version)" >> "$GITHUB_OUTPUT"
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ steps.tfv.outputs.version }}
           terraform_wrapper: false
@@ -141,7 +141,7 @@ jobs:
           terraform validate -no-color
 
       - name: Setup tflint
-        uses: terraform-linters/setup-tflint@v4
+        uses: terraform-linters/setup-tflint@v6
         with:
           tflint_version: latest
 
@@ -169,14 +169,14 @@ jobs:
         working-directory: terraform/${{ matrix.env }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Version Terraform de l'environnement
         id: tfv
         run: echo "version=$(cat .terraform-version)" >> "$GITHUB_OUTPUT"
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ steps.tfv.outputs.version }}
           terraform_wrapper: false
@@ -225,7 +225,7 @@ jobs:
       # garde un seul plan à jour au lieu d'une pile de versions périmées.
       - name: Commenter le plan
         if: always() && steps.plan.outcome != 'skipped'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           ENV_NAME: ${{ matrix.env }}
           VERDICT: ${{ steps.plan.outputs.verdict }}
@@ -294,14 +294,14 @@ jobs:
         working-directory: terraform/${{ matrix.env }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Version Terraform de l'environnement
         id: tfv
         run: echo "version=$(cat .terraform-version)" >> "$GITHUB_OUTPUT"
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ steps.tfv.outputs.version }}
           terraform_wrapper: false
