@@ -129,6 +129,33 @@ blob = container.download_blob("rapports/2026-09-08.csv").readall()      # api-r
 Une API de niveau `ro` qui tente d'écrire reçoit `AuthorizationPermissionMismatch`
 : c'est le rôle `Storage Blob Data Reader` qui parle, pas un bug.
 
+## D'où viennent les droits
+
+Le jeton ne contient ni « lecture » ni « écriture ». Il ne dit qu'une
+chose : *qui* parle (`sub` = `dev/api-rw` ou `dev/api-ro`). Entra ID
+l'échange contre un jeton **au nom de l'identité managée** correspondante,
+et c'est le stockage qui applique les rôles posés sur cette identité par
+Terraform (`iam.tf`) : `api-rw` a *Storage Blob Data Contributor* sur le
+conteneur, `api-ro` a *Storage Blob Data Reader*. Même code, même clé
+privée, même émetteur : seule l'identité qu'on prétend être change, et
+avec elle ce qu'Azure accepte. Retirer un droit se fait dans Terraform,
+sans toucher à l'API ni à la clé.
+
+## Démonstration
+
+Un script fait tout le chemin, commenté étape par étape, et montre ce que
+chaque identité peut faire :
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install azure-identity azure-storage-blob "PyJWT[crypto]"
+.venv/bin/python terraform/scripts/blob-demo.py DEV api-rw   # liste, écrit, lit
+.venv/bin/python terraform/scripts/blob-demo.py DEV api-ro   # liste, écriture REFUSÉE, lit
+```
+
+Il lit les valeurs dans les sorties Terraform de l'environnement et la clé
+privée dans `~/.enervision/`. Une vraie API fait exactement la même chose
+avec son `.env` : le code de la section « Côté API » est celui du script.
+
 ## Tester sans API
 
 ```bash

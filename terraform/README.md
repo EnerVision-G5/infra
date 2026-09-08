@@ -39,7 +39,8 @@ terraform/
 │   ├── allow-ci.sh             ouvrir un autre groupe de ressources à la chaîne
 │   ├── new-env.sh              nouvel environnement à partir d'un existant
 │   ├── issuer-keygen.sh        paire de clés de l'émetteur d'un environnement
-│   └── workload-token.sh       jeton de test pour une identité applicative
+│   ├── workload-token.sh       jeton de test pour une identité applicative
+│   └── blob-demo.py            démonstration Python : jeton, échange, lecture/écriture
 ├── docs/
 │   ├── organisation-azure.md   ce que l'école donne et interdit, l'équipe, les droits
 │   └── identites-applicatives.md  brancher une API Python sur les blobs, sans secret
@@ -218,6 +219,7 @@ rien, complète ce qui manque. Chacun explique en tête ses étapes et ses régl
 | `new-env.sh <SRC> <ENV>` | par nouvel environnement (ou le workflow *terraform-new-env*) | Copie le dossier d'un environnement, renomme ses fichiers, change la clé d'état et le nom. Ne touche pas à Azure |
 | `issuer-keygen.sh <ENV>` | une fois par environnement, à la mise en place des identités applicatives, puis à chaque rotation | Génère la paire de clés de l'émetteur : clé privée hors du dépôt (vault Ansible), clé publique au format JWK à coller dans `<ENV>.auto.tfvars`. Ne touche pas à Azure |
 | `workload-token.sh <clé> <issuer> <sujet>` | pour tester ou dépanner une identité applicative | Fabrique le même jeton que le code Python, à échanger avec `az login --federated-token` |
+| `blob-demo.py <ENV> <identité>` | pour comprendre et démontrer | Le chemin complet en Python commenté : jeton signé, échange, puis lister / écrire / lire, avec ce que chaque identité obtient ou se voit refuser |
 
 ## Identités applicatives
 
