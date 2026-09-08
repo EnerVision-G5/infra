@@ -13,7 +13,9 @@ Type=oneshot
 # --cpus / --memory : mêmes garde-fous que les conteneurs du compose, la VM
 # 4 vCPU / 8 Go portant toute la stack. Le rattrapage tourne la nuit (02:30),
 # staggeré avec l'entraînement et la surveillance de dérive.
-ExecStart=/bin/sh -c '/usr/bin/docker run --rm \
+ExecStart=/usr/bin/flock --wait {{ applications_jobs_lock_wait_seconds }} \
+  {{ applications_jobs_lock }} \
+  /bin/sh -c '/usr/bin/docker run --rm \
   --network db_network \
   --cpus {{ applications_collector_backfill_cpu_limit }} \
   --memory {{ applications_collector_backfill_memory_limit }} \

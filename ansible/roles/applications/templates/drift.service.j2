@@ -16,7 +16,9 @@ Type=oneshot
 # `run --rm` et non `up` : la surveillance est un traitement daté, elle
 # mesure et elle sort. -T parce qu'un timer n'a pas de terminal à allouer.
 WorkingDirectory={{ applications_dir }}/training
-ExecStart=/usr/bin/docker compose \
+ExecStart=/usr/bin/flock --wait {{ applications_jobs_lock_wait_seconds }} \
+  {{ applications_jobs_lock }} \
+  /usr/bin/docker compose \
   --project-name enervision-training \
   --profile jobs \
   run --rm -T drift

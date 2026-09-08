@@ -324,6 +324,50 @@
   notify: Reload systemd
 
 # --------------------------------------------------------------------------
+# Rattrapage ETL : reproduction des variables sur une fenêtre historique.
+#
+# Pas de timer, contrairement au rattrapage collector : refaire l'histoire
+# n'est pas une opération périodique. L'unité existe pour qu'un rattrapage
+# ait un chemin supporté — tranches, plafonds, verrou partagé, fenêtre calme
+# — plutôt qu'un `docker exec` dans le conteneur vivant, qui met deux
+# traitements dans le même cgroup de 512 Mo.
+#
+#   systemctl start etl-backfill
+#   journalctl -u etl-backfill -f
+# --------------------------------------------------------------------------
+- name: Déposer le script du rattrapage ETL
+  ansible.builtin.template:
+    src: etl-backfill.sh.j2
+    dest: "{{ applications_jobs_script_dir }}/enervision-etl-backfill"
+    owner: root
+    group: root
+    mode: "0755"
+  when: applications_etl_backfill_active | bool
+
+- name: Installer l'unité systemd du rattrapage ETL
+  ansible.builtin.template:
+    src: etl-backfill.service.j2
+    dest: /etc/systemd/system/etl-backfill.service
+    owner: root
+    group: root
+    mode: "0644"
+  when: applications_etl_backfill_active | bool
+  notify: Reload systemd
+
+# Ni `enabled` ni `state: started` : l'unité est déclenchée à la main, et
+# l'activer la lancerait au prochain démarrage de la VM — c'est-à-dire un
+# rattrapage de deux ans juste après un incident.
+- name: Retirer le rattrapage ETL quand il est désactivé
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/etl-backfill.service
+    - "{{ applications_jobs_script_dir }}/enervision-etl-backfill"
+  when: not (applications_etl_backfill_active | bool)
+  notify: Reload systemd
+
+# --------------------------------------------------------------------------
 # Réentraînement du modèle : même schéma, sur le compose déposé plus haut.
 # Le timer est le seul à lancer l'image predict/training ; un déploiement ne
 # réapprend rien, il met à jour la version que le prochain run utilisera.

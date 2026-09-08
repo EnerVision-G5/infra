@@ -423,6 +423,69 @@ applications_drift_alert_ratio: 1.5
 # La surveillance rejoue le modèle site par site sur la fenêtre mesurée. Sans
 # borne, systemd la tuerait au bout de 90 s en laissant un run MLflow ouvert.
 applications_drift_timeout_seconds: 1800
+# --------------------------------------------------------------------------
+# Verrou partagé des traitements lourds (entraînement, dérive, rattrapages).
+#
+# Ces jobs demandent 2 à 3 Go et plusieurs vCPU chacun sur une VM qui en a 8
+# et 4. Rien n'empêchait jusqu'ici l'entraînement du dimanche 03:30, qui peut
+# courir deux heures, de croiser la surveillance de dérive de 04:30. Le
+# verrou les sérialise : le second attend le premier au lieu de se battre
+# avec lui pour la mémoire.
+#
+# `flock` et non `Conflicts=` : Conflicts ARRÊTE l'unité concurrente, ce qui
+# tuerait un entraînement en cours au lieu de le laisser finir.
+# --------------------------------------------------------------------------
+applications_jobs_lock: "/run/enervision-jobs.lock"
+
+# Attente maximale du verrou. Au-delà, le job renonce plutôt que de démarrer
+# à une heure où plus personne ne l'attend ; le timer repassera.
+applications_jobs_lock_wait_seconds: 3600
+
+# Où sont déposés les scripts que les unités systemd exécutent. Hors de
+# /usr/local/bin, réservé à ce qu'un administrateur installe à la main.
+applications_jobs_script_dir: "/usr/local/sbin"
+
+# --------------------------------------------------------------------------
+# Rattrapage ETL : reproduction des variables sur une fenêtre historique.
+#
+# Le pendant du rattrapage collector, et il manquait. Faute d'un chemin
+# supporté, un rattrapage se lançait par `docker exec` DANS le conteneur
+# vivant : deux traitements dans le même cgroup de 512 Mo, la boucle horaire
+# et le rattrapage se partageant le plafond, et une seule connexion à la base
+# balayant une centaine de chunks.
+#
+# Déclenché à la main (`systemctl start etl-backfill`), sans timer : refaire
+# l'histoire n'est pas une opération périodique.
+# --------------------------------------------------------------------------
+applications_etl_backfill_active: >-
+  {{ 'etl' in applications_enabled }}
+
+# Journées reproduites par défaut, et dernière journée de la fenêtre. Le
+# rattrapage remonte le temps depuis cette date.
+applications_etl_backfill_days: 730
+applications_etl_backfill_until: "2024-12-31"
+
+# Taille d'une tranche. Chaque tranche est un conteneur NEUF : son cgroup
+# repart de zéro, et sa connexion à la base aussi — c'est ce qui empêche un
+# unique backend Postgres d'accumuler le catalogue d'une centaine de chunks
+# sur toute la durée du rattrapage.
+applications_etl_backfill_slice_days: 30
+
+# Fenêtre horaire autorisée, en heure de l'hôte. Elle enjambe minuit :
+# autorisé à partir de _start_, et jusqu'à _end_ le lendemain. Hors de cette
+# fenêtre l'unité est IGNORÉE, pas en échec — `ExecCondition` la marque
+# comme sautée, ce qui distingue « pas le moment » de « ça a raté ».
+#
+# Pour un rattrapage urgent en journée, assumé comme tel :
+#   systemd-run --unit etl-backfill-force --setenv=ETL_BACKFILL_FORCE=1 #     --property=Type=oneshot /bin/systemctl start etl-backfill
+applications_etl_backfill_window_start_hour: 22
+applications_etl_backfill_window_end_hour: 6
+
+# Borne de durée du rattrapage complet. Deux ans par tranches de 30 journées
+# enchaînent des dizaines de conteneurs : 90 s (défaut systemd) couperaient
+# au milieu de la première.
+applications_etl_backfill_timeout_seconds: 21600
+
 # Vrai quand la surveillance doit exister sur l'hôte. Elle partage l'image du
 # réentraînement : sans lui, l'image n'est pas tirée et le compose qui la
 # déclare n'est pas déposé.
