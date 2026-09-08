@@ -1,33 +1,32 @@
 ---
-- name: Create timescaledb directory
+- name: Create kafka directory
   ansible.builtin.file:
-    path: "{{ timescaledb_dir }}"
+    path: "{{ kafka_dir }}"
     state: directory
     owner: root
     group: root
     mode: "0755"
 
-- name: Generate timescaledb docker compose file
+- name: Generate kafka docker compose file
   ansible.builtin.template:
     src: compose.yml.j2
-    dest: "{{ timescaledb_dir }}/compose.yml"
+    dest: "{{ kafka_dir }}/compose.yml"
     owner: root
     group: root
     mode: "0600"
   no_log: true
 
-- name: Generate timescaledb environment file
+- name: Generate kafka environment file
   ansible.builtin.template:
-    src: db.env.j2
-    dest: "{{ timescaledb_dir }}/.env"
+    src: kafka.env.j2
+    dest: "{{ kafka_dir }}/.env"
     owner: root
     group: root
     mode: "0600"
-  no_log: true
 
-- name: Deploy timescaledb
+- name: Deploy kafka
   community.docker.docker_compose_v2:
-    project_src: "{{ timescaledb_dir }}"
+    project_src: "{{ kafka_dir }}"
     files:
       - compose.yml
     env_files:

@@ -1,8 +1,9 @@
 # Applications
 
-Le rôle `applications` (`deploy.yml`) déploie huit services : le dashboard,
-l'API, et la chaîne de prédiction (MLflow, serving, training, collector, etl,
-predict-cron).
+Le rôle `applications` (`deploy.yml`) déploie sept services : le dashboard,
+l'API, et la chaîne de prédiction (serving, training, collector, etl,
+predict-cron). Le registre **MLflow** est déployé à part, par le rôle `mlflow`
+(`provision.yml`) — voir [Services › MLflow](../mlflow.md).
 
 | | |
 |---|---|
@@ -18,7 +19,7 @@ connus. `applications_enabled` (`vars.yml`) filtre ceux réellement déployés :
 
 ```yaml
 applications_enabled:
-  [front, api, mlflow, serving, training, collector, etl, predict-cron]
+  [front, api, serving, training, collector, etl, predict-cron]
 ```
 
 Un service absent de cette liste n'est **ni configuré, ni tiré, ni démarré**.
@@ -27,7 +28,7 @@ Un service absent de cette liste n'est **ni configuré, ni tiré, ni démarré**
 
 | `kind` | Signification | Services |
 |---|---|---|
-| `web` | service HTTP exposé derrière Traefik | front, api, mlflow, serving |
+| `web` | service HTTP exposé derrière Traefik | front, api, serving |
 | `worker` | processus long, sans port ni route | collector, etl, predict-cron |
 | `job` | traitement daté, **jamais** démarré par `docker compose up` — un timer systemd le lance | training |
 
@@ -41,12 +42,10 @@ Un service absent de cette liste n'est **ni configuré, ni tiré, ni démarré**
 | training | `predict/training` | `applications_training_sha` |
 | etl | `predict/etl` | `applications_etl_sha` |
 | collector | `predict/collector` | `applications_collector_sha` |
-| **mlflow** | *= image `training`* | `shares_image_with: training` |
 | **predict-cron** | *= image `api`* | `shares_image_with: api` |
 
-`mlflow` et `predict-cron` n'ont ni image ni version propres : ils
-**empruntent** celle d'un autre service et sont exclus du contrôle
-d'unicité `image:tag`.
+`predict-cron` n'a ni image ni version propres : il **emprunte** celle de
+l'`api` et est exclu du contrôle d'unicité `image:tag`.
 
 Le dépôt `predict` publie `serving`, `training`, `etl`, `collector` **depuis
 le même commit** → même tag, images distinctes. Le rôle vérifie l'unicité du
@@ -56,7 +55,7 @@ couple `image:tag`, jamais du SHA seul.
 
 ```mermaid
 flowchart TD
-    A[Asserts : JWT_SECRET, CORS, CSP,<br/>clés S3, MLflow protégé, ≥ 1 service, SHA présents,<br/>image:tag unique] --> B[Créer /opt/srv/applications/&lt;name&gt;/]
+    A[Asserts : JWT_SECRET, CORS, CSP,<br/>clés S3, ≥ 1 service, SHA présents,<br/>image:tag unique] --> B[Créer /opt/srv/applications/&lt;name&gt;/]
     B --> C[Créer les réseaux Docker]
     C --> D[docker login GHCR]
     D --> E[Générer .env par service]
@@ -81,4 +80,4 @@ variables).
 
 - [front](front.md) — le dashboard
 - [api](api.md) — l'API métier + `predict-cron`
-- [predict](predict.md) — serving, training, mlflow, collector, etl
+- [predict](predict.md) — serving, training, collector, etl

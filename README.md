@@ -31,8 +31,10 @@ puis applique :
 | Rôle Ansible  | Ce qu'il installe                                              |
 | ------------- | -------------------------------------------------------------- |
 | `traefik`     | Point d'entrée unique, TLS, routage                             |
-| `garage`      | Stockage objet compatible S3 (artefacts, archives)             |
-| `timescaledb` | PostgreSQL + TimescaleDB — le **schéma** est porté par les migrations Alembic du dépôt `api`, jamais ici |
+| `garage`      | Stockage objet compatible S3 (partitions de variables, archives) |
+| `postgres`    | PostgreSQL 17 nu (+ pgweb) — le **schéma** est porté par les migrations Alembic du dépôt `api`, jamais ici |
+| `kafka`       | Broker Kafka (KRaft, mono-nœud) + création des topics + kafka-ui |
+| `mlflow`      | Registre de modèles MLflow (image construite sur place, artefacts volume local ou Azure Blob) |
 | `monitoring`  | Prometheus, Grafana, Loki + Promtail, node_exporter, cAdvisor   |
 
 `deploy.yml` applique le rôle `applications` : Front / API / Predict, un
@@ -87,7 +89,7 @@ Prérequis sur le poste qui déploie :
 ### Provisionner l'hôte
 
 ```bash
-# Réseaux Docker partagés + Traefik, Garage, TimescaleDB, monitoring
+# Réseaux Docker partagés + Traefik, Garage, PostgreSQL, Kafka, MLflow, monitoring
 ansible-playbook ansible/playbooks/provision.yml --ask-vault-pass
 ```
 
@@ -125,9 +127,10 @@ prochain passage du playbook écrase de toute façon la retouche.
 | `applications_etl_sha`     | `predict/etl`                          | `predict`   | `cd-etl.yml`        |
 | `applications_collector_sha` | `predict/collector`                  | `predict`   | `cd-collector.yml`  |
 
-`mlflow` tourne sur l'image `predict/training` et `predict-cron` sur l'image
-`api` : ils suivent `applications_training_sha` et `applications_api_sha`, sans
-variable propre.
+`predict-cron` tourne sur l'image `api` : il suit `applications_api_sha`, sans
+variable propre. Le registre **MLflow** n'est plus une application — il est
+déployé par le rôle `mlflow` (`provision.yml`), avec une image construite sur
+place (voir [Services › MLflow](docs/content/services/mlflow.md)).
 
 #### 1. Lire le SHA publié
 
@@ -348,7 +351,7 @@ ansible/inventories/on-premise/group_vars/all/
 ```
 
 Les rôles et templates ne référencent que les variables « métier »
-(`ghcr_token`, `timescaledb_password`, …) ; `vars.yml` les fait pointer vers les
+(`ghcr_token`, `postgres_password`, …) ; `vars.yml` les fait pointer vers les
 `vault_*` définis dans `vault.yml`. Aucune valeur sensible n'apparaît en clair
 dans le dépôt.
 
@@ -357,11 +360,12 @@ dans le dépôt.
 | `garage_rpc_secret`                  | `vault_garage_rpc_secret`                | `garage`     |
 | `garage_admin_token`                 | `vault_garage_admin_token`              | `garage`     |
 | `garage_metrics_token`               | `vault_garage_metrics_token`            | `garage`     |
-| `timescaledb_password`               | `vault_timescaledb_password`            | `timescaledb`, `applications` |
+| `postgres_password`                  | `vault_postgres_password`               | `postgres`, `applications` |
 | `ghcr_username`                      | `vault_ghcr_username`                   | `applications` |
 | `ghcr_token`                         | `vault_ghcr_token`                      | `applications` |
 | `monitoring_grafana_admin_password`  | `vault_monitoring_grafana_admin_password` | `monitoring` |
 | `applications_api_jwt_secret`        | `vault_applications_api_secret_key`     | `applications` |
+| `mlflow_azure_connection_string`     | `vault_mlflow_azure_connection_string`  | `mlflow` *(si artefacts `wasbs://`)* |
 | `ansible_password`                   | `vault_ansible_ssh_password`            | connexion SSH à l'hôte (`hosts.yml`) |
 
 Pour ajouter un secret : le déclarer dans `vault.yml` sous `vault_<nom>`

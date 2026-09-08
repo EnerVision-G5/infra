@@ -16,8 +16,10 @@ correspondre.
 | `s3.enervision.com` + `*.s3.enervision.com` | Garage — API S3 | `garage` | 3900 | `web` | clés S3 |
 | `web.enervision.com` + `*.web.enervision.com` | Garage — hébergement statique | `garage` | 3902 | `web` | selon bucket |
 | `garage.enervision.com` | Garage — interface web | `garage-webui` | 3909 | `web` | jeton admin |
-| `mlflow.enervision.com` | registre MLflow *(si `applications_mlflow_expose`)* | `enervision-mlflow` | 5000 | `web` | **basicauth** (htpasswd, Vault) |
 | `traefik.enervision.com` | tableau de bord Traefik | `traefik` | *(api@internal)* | `websecure` | — |
+
+MLflow (`mlflow:5000`), pgweb (`pgweb:8081`) et kafka-ui (`kafka-ui:8080`) ne
+sont **pas routés** : consultés par tunnel SSH sur la boucle locale de l'hôte.
 
 Les wildcards `*.s3.` et `*.web.` viennent du fonctionnement de Garage :
 `<bucket>.web.enervision.com` sert le bucket `<bucket>`. Voir
@@ -63,7 +65,6 @@ api        A   <ip-vm>
 predict    A   <ip-vm>
 grafana    A   <ip-vm>
 garage     A   <ip-vm>
-mlflow     A   <ip-vm>
 traefik    A   <ip-vm>
 s3         A   <ip-vm>
 *.s3       A   <ip-vm>

@@ -9,7 +9,7 @@ group_vars/all/
 ```
 
 Les rôles et templates ne référencent que des variables **métier**
-(`ghcr_token`, `timescaledb_password`, …). `vars.yml` les fait pointer, par
+(`ghcr_token`, `postgres_password`, …). `vars.yml` les fait pointer, par
 indirection, vers des clés `vault_*` définies dans `vault.yml` chiffré.
 
 Un seul endroit porte la valeur réelle ; `git` ne voit jamais rien en clair ;
@@ -20,7 +20,7 @@ et [`check-secrets.sh`](verification.md) le vérifie en CI.
 | Variable métier | Clé Vault | Consommée par |
 |---|---|---|
 | `ansible_password` | `vault_ansible_ssh_password` | connexion SSH (`hosts.yml`) |
-| `timescaledb_password` | `vault_timescaledb_password` | timescaledb, api, collector, etl, training, predict-cron |
+| `postgres_password` | `vault_postgres_password` | postgres, api, collector, etl, training, predict-cron |
 | `ghcr_username` | `vault_ghcr_username` | rôle `applications` — `docker login ghcr.io` |
 | `ghcr_token` | `vault_ghcr_token` | idem (PAT `read:packages`) |
 | `garage_rpc_secret` | `vault_garage_rpc_secret` | garage (`garage.toml`, `.env`) |
@@ -30,7 +30,7 @@ et [`check-secrets.sh`](verification.md) le vérifie en CI.
 | `applications_api_jwt_secret` | `vault_applications_api_secret_key` | api — `JWT_SECRET` (≥ 32 caractères) |
 | `applications_predict_s3_access_key_id` | `vault_garage_s3_access_key_id` | serving, training, etl |
 | `applications_predict_s3_secret_access_key` | `vault_garage_s3_secret_access_key` | serving, training, etl |
-| `applications_mlflow_basic_auth_users` | `vault_applications_mlflow_basic_auth_users` | mlflow (si exposé) — format htpasswd |
+| `mlflow_azure_connection_string` | `vault_mlflow_azure_connection_string` | mlflow — seulement si artefacts sur Azure Blob (`wasbs://`) |
 
 !!! note "Nom de clé historique"
     `applications_api_jwt_secret` pointe `vault_applications_api_secret_key`

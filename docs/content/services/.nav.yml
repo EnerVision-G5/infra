@@ -3,6 +3,8 @@ nav:
   - index.md
   - traefik.md
   - garage.md
-  - timescaledb.md
+  - postgres.md
+  - kafka.md
+  - mlflow.md
   - monitoring.md
   - applications

@@ -23,9 +23,9 @@ garage_s3_region: "garage"
 garage_s3_root_domain: ".s3.enervision.com"
 garage_web_root_domain: ".web.enervision.com"
 
-# TIMESCALEDB
-timescaledb_db: "enervision"
-timescaledb_user: "enervision"
+# POSTGRES
+postgres_db: "enervision"
+postgres_user: "enervision"
 
 # MONITORING
 monitoring_grafana_host: "grafana.enervision.com"
@@ -38,7 +38,7 @@ applications_serving_host: "predict.enervision.com"
 
 # --- API : contenu du .env généré (api.env.j2) ----------------------------
 # DATABASE_URL et JWT_SECRET ne sont PAS ici : l'URL est construite par le rôle
-# depuis les variables timescaledb, le secret vient du Vault (plus bas).
+# depuis les variables postgres, le secret vient du Vault (plus bas).
 applications_api_app_name: "EnerVision API"
 applications_api_environment: "production"
 applications_api_debug: false
@@ -57,29 +57,22 @@ applications_predict_storage_root: "s3://enervision-features"
 # lancer `python -m collector.datasets`, cf. le README de predict.
 applications_predict_datasets_root: "s3://enervision-datasets"
 # applications_predict_mlflow_tracking_uri n'est pas repris ici : le registre
-# est déployé par le rôle, et son défaut désigne déjà le conteneur déployé.
+# est déployé par le rôle mlflow (conteneur `mlflow` sur ml_network), et le
+# défaut du rôle applications le désigne déjà.
 # Point d'accès interne de Garage (storage_network). Les identifiants
 # viennent du Vault, cf. le rattachement en bas de fichier.
 applications_predict_s3_endpoint_url: "http://garage:3900"
 
-# --- MLflow (image predict/training) : registre de modèles ----------------
-# Route Traefik ouverte, et jamais sans authentification basique : MLflow n'a
-# aucune authentification propre, et déplacer un alias dans le registre suffit
-# à changer le modèle servi en production. Le rôle refuse de déployer la route
-# tant que applications_mlflow_basic_auth_users est vide, cf. le rattachement
-# au vault en bas de fichier — hachage produit par
-# `htpasswd -nbB <utilisateur> '<mot de passe>'`.
+# --- MLflow (rôle `mlflow`, provision.yml) : registre de modèles ----------
+# Image construite sur place (mlflow v3.1.1 + client Azure), backend SQLite
+# dans un volume, interface consultée par tunnel SSH — jamais routée par
+# Traefik (MLflow n'a aucune authentification propre).
+#   ssh -L 5000:127.0.0.1:5000 <hote>  puis http://localhost:5000
 #
-# Le port reste publié sur la seule boucle locale de l'hôte : la route n'est
-# pas le seul chemin, et le tunnel SSH reste la voie sûre tant que
-# traefik_entrypoint vaut `web`, l'authentification basique voyageant alors en
-# clair.
-#   ssh -p 2222 -L 5000:127.0.0.1:5000 <hote>  puis http://localhost:5000
-#
-# Le domaine doit résoudre vers l'hôte avant le déploiement : sans
-# enregistrement DNS, Traefik n'a aucun Host à faire correspondre à la route.
-applications_mlflow_expose: true
-applications_mlflow_host: "mlflow.enervision.com"
+# Artefacts : volume local par défaut. Pour les basculer sur Azure Blob,
+# renseigner l'URI ci-dessous (le conteneur de blob doit exister) et la chaîne
+# de connexion dans le Vault (rattachement en bas de fichier) :
+#   mlflow_artifacts_destination: "wasbs://<conteneur>@<compte>.blob.core.windows.net"
 
 # --- Serving (image predict/serving) : contenu du .env (serving.env.j2) ----
 applications_serving_env: "production"
@@ -104,11 +97,11 @@ applications_collector_backfill_enabled: true
 applications_collector_backfill_on_calendar: "*-*-* 02:30:00"
 applications_collector_backfill_days: 2
 
-# Applications deployees.
+# Applications deployees. MLflow n'y est plus : il est déployé par le rôle
+# `mlflow` (provision.yml), pas par le rôle applications.
 applications_enabled:
   - front
   - api
-  - mlflow
   - serving
   - training
   - collector
@@ -137,6 +130,7 @@ docker_external_networks:
   - "storage_network"
   - "ml_network"
   - "monitoring_network"
+  - "broker_network"
 
 # --------------------------------------------------------------------------
 # Rattachement des secrets — valeurs réelles dans vault.yml (chiffré).
@@ -145,7 +139,7 @@ garage_rpc_secret: "{{ vault_garage_rpc_secret }}"
 garage_admin_token: "{{ vault_garage_admin_token }}"
 garage_metrics_token: "{{ vault_garage_metrics_token }}"
 
-timescaledb_password: "{{ vault_timescaledb_password }}"
+postgres_password: "{{ vault_postgres_password }}"
 
 ghcr_username: "{{ vault_ghcr_username }}"
 ghcr_token: "{{ vault_ghcr_token }}"
@@ -159,11 +153,12 @@ monitoring_grafana_admin_password: "{{ vault_monitoring_grafana_admin_password }
 applications_predict_s3_access_key_id: "{{ vault_garage_s3_access_key_id | default('') }}"
 applications_predict_s3_secret_access_key: "{{ vault_garage_s3_secret_access_key | default('') }}"
 
-# Identifiants de l'authentification basique devant MLflow, au format htpasswd
-# (`htpasswd -nbB <utilisateur> '<mot de passe>'`). Lus seulement quand
-# applications_mlflow_expose est vrai ; le rôle refuse alors de déployer une
-# route sans eux.
-applications_mlflow_basic_auth_users: "{{ vault_applications_mlflow_basic_auth_users | default('') }}"
+# Chaîne de connexion du compte de stockage Azure Blob où MLflow dépose ses
+# artefacts. Lue seulement quand mlflow_artifacts_destination est une URI
+# wasbs:// ; le rôle mlflow refuse alors de déployer sans elle. Le `default('')`
+# laisse le rôle nommer ce qui manque plutôt qu'échouer sur une variable
+# indéfinie.
+mlflow_azure_connection_string: "{{ vault_mlflow_azure_connection_string | default('') }}"
 
 # Émis en JWT_SECRET dans api.env. >= 32 caractères, sinon l'API refuse de
 # démarrer. La clé Vault garde son nom historique (vault_applications_api_secret_key)

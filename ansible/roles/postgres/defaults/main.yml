@@ -1,0 +1,36 @@
+---
+# Répertoire de déploiement sur l'hôte (même convention que les autres rôles).
+postgres_dir: /opt/srv/postgres
+
+# Image épinglée = même moteur en local et sur la VM. PostgreSQL nu : le schéma
+# est géré côté API (SQLAlchemy / migrations Alembic), pas ici.
+postgres_image: "postgres:17.10-alpine3.24"
+
+# Connexion applicative.
+postgres_db: enervision
+postgres_user: enervision
+# postgres_password : OBLIGATOIRE — à définir dans group_vars (chiffré avec
+# ansible-vault). Aucune valeur par défaut volontairement.
+
+# Publication du port sur l'hôte, pour l'administration psql uniquement. Lié à
+# la loopback par défaut : les autres conteneurs (API, ETL) passent par le
+# réseau Docker "db_network", pas par le port publié.
+postgres_bind_address: "127.0.0.1"
+postgres_port: 5432
+
+# Garde-fous ressources du conteneur.
+postgres_memory_limit: 2G
+postgres_cpu_limit: "2.0"
+
+# --------------------------------------------------------------------------
+# pgweb — console SQL web, temporaire. Consultée par tunnel SSH
+# (ssh -L {{ postgres_pgweb_port }}:127.0.0.1:{{ postgres_pgweb_port }} <hote>),
+# jamais routée par Traefik. À retirer une fois la phase de développement finie.
+# --------------------------------------------------------------------------
+postgres_pgweb_enabled: true
+# base/infra utilise :latest — épinglé ici comme le reste de la stack.
+postgres_pgweb_image: "sosedoff/pgweb:0.16.2"
+postgres_pgweb_bind_address: "127.0.0.1"
+postgres_pgweb_port: 8081
+postgres_pgweb_memory_limit: 128M
+postgres_pgweb_cpu_limit: "0.25"

@@ -1,0 +1,35 @@
+---
+- name: Create postgres directory
+  ansible.builtin.file:
+    path: "{{ postgres_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Generate postgres docker compose file
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ postgres_dir }}/compose.yml"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Generate postgres environment file
+  ansible.builtin.template:
+    src: postgres.env.j2
+    dest: "{{ postgres_dir }}/.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Deploy postgres
+  community.docker.docker_compose_v2:
+    project_src: "{{ postgres_dir }}"
+    files:
+      - compose.yml
+    env_files:
+      - .env
+    state: present

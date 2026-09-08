@@ -1,0 +1,43 @@
+---
+# Répertoire de déploiement sur l'hôte (même convention que les autres rôles).
+mlflow_dir: /opt/srv/mlflow
+
+# Image construite sur place depuis le Dockerfile généré : l'image officielle
+# MLflow ne tire pas le client de stockage Azure. FROM épinglé.
+mlflow_base_image: "ghcr.io/mlflow/mlflow:v3.1.1"
+mlflow_image: "enervision-mlflow:local"
+mlflow_container_name: mlflow
+
+# Publié sur la seule boucle locale : l'interface se consulte par un tunnel SSH
+# (ssh -L {{ mlflow_port }}:127.0.0.1:{{ mlflow_port }} <hote>). MLflow n'ayant
+# aucune authentification propre, il n'est jamais routé par Traefik.
+mlflow_bind_address: "127.0.0.1"
+mlflow_port: 5000
+
+# Backend store : le Model Registry exige une base relationnelle. SQLite dans
+# le volume, hors image, pour que les runs survivent à un redéploiement.
+mlflow_backend_store_uri: "sqlite:////mlflow/mlflow.db"
+
+# Destination des artefacts. Défaut = volume local (le rôle fonctionne sans
+# stockage externe). Passer une URI wasbs:// dans group_vars bascule sur Azure
+# Blob et rend mlflow_azure_connection_string obligatoire (assert du rôle) :
+#   wasbs://<conteneur>@<compte>.blob.core.windows.net
+mlflow_artifacts_destination: "/mlflow/artifacts"
+
+# mlflow_azure_connection_string : chaîne de connexion du compte de stockage
+# Azure. Pas de défaut ici (secret) — rattachée dans group_vars par indirection
+# Vault. Lue seulement quand mlflow_artifacts_destination est une URI wasbs:// ;
+# le rôle refuse alors de déployer sans elle (cf. tasks/main.yml).
+
+# MLflow 3 rejette tout en-tête Host qu'il ne reconnaît pas (protection contre
+# le DNS rebinding), y compris venant de ses propres clients serving / training
+# qui joignent http://{{ mlflow_container_name }}:{{ mlflow_port }}.
+mlflow_allowed_hosts:
+  - "{{ mlflow_container_name }}:{{ mlflow_port }}"
+  - "localhost:{{ mlflow_port }}"
+  - "127.0.0.1:{{ mlflow_port }}"
+
+# Garde-fous ressources. Le serveur charge mlflow + le client Azure ; 2G laisse
+# une marge au-dessus du socle mesuré, 1 vCPU suffit (SQLite + proxy d'artefacts).
+mlflow_memory_limit: 2G
+mlflow_cpu_limit: "1.0"

@@ -16,8 +16,8 @@ mesures, archivage des prédictions. Applique le schéma de la base.
 ## Migrations au démarrage
 
 L'**entrypoint du conteneur** exécute `alembic upgrade head` avant de lancer
-uvicorn. C'est le seul mécanisme qui crée / fait évoluer le schéma de
-TimescaleDB — voir [Services › TimescaleDB](../timescaledb.md).
+uvicorn. C'est le seul mécanisme qui crée / fait évoluer le schéma de la base
+PostgreSQL — voir [Services › PostgreSQL](../postgres.md).
 
 ## `.env` généré (`api.env.j2`)
 

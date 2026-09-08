@@ -62,7 +62,9 @@ durcissement système déjà fait. Les rôles Ansible qui faisaient ce travail
 |---|---|
 | `/opt/srv/traefik/` | compose + `.env` de Traefik |
 | `/opt/srv/garage/` | compose + `.env` + `garage.toml` |
-| `/opt/srv/timescaledb/` | compose + `.env` |
+| `/opt/srv/postgres/` | compose + `.env` |
+| `/opt/srv/kafka/` | compose + `.env` |
+| `/opt/srv/mlflow/` | `Dockerfile` + compose + `.env` |
 | `/opt/srv/monitoring/` | compose + `.env` + configs Prometheus/Loki/Promtail/Grafana |
 | `/opt/srv/applications/<name>/` | un dossier par application : `compose.yml`, `.env`, `.sha` |
 | `/etc/systemd/system/` | timers `collector-backfill.*` et `training.*` |
@@ -76,7 +78,9 @@ Volontairement rares : presque tout passe par les réseaux Docker.
 | Port | Service | Portée |
 |---|---|---|
 | `80`, `443` | Traefik | public |
-| `127.0.0.1:5432` | TimescaleDB | loopback (admin `psql`) |
+| `127.0.0.1:5432` | PostgreSQL | loopback (admin `psql`) |
+| `127.0.0.1:8081` | pgweb | loopback (tunnel SSH — temporaire) |
+| `127.0.0.1:8080` | kafka-ui | loopback (tunnel SSH — temporaire) |
 | `127.0.0.1:5000` | MLflow | loopback (tunnel SSH) |
 
 Voir [Référence › Réseaux & ports](../reference/reseaux-ports.md).

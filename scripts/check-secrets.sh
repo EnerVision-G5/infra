@@ -47,11 +47,12 @@ secret_vars=(
   garage_rpc_secret
   garage_admin_token
   garage_metrics_token
-  timescaledb_password
+  postgres_password
   ghcr_username
   ghcr_token
   monitoring_grafana_admin_password
   applications_api_jwt_secret
+  mlflow_azure_connection_string
   ansible_password
 )
 

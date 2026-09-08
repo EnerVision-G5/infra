@@ -22,15 +22,15 @@ Sortie non nulle = un secret potentiellement en clair. Ce qu'il teste :
 
 ```
 garage_rpc_secret · garage_admin_token · garage_metrics_token
-timescaledb_password · ghcr_username · ghcr_token
-monitoring_grafana_admin_password · applications_api_jwt_secret · ansible_password
+postgres_password · ghcr_username · ghcr_token
+monitoring_grafana_admin_password · applications_api_jwt_secret
+mlflow_azure_connection_string · ansible_password
 ```
 
 !!! note "Non couverts par le contrôle 2"
-    `applications_predict_s3_*` et `applications_mlflow_basic_auth_users`
-    utilisent `| default('')` et **ne sont pas** dans `secret_vars`. Les
-    garder en indirection Vault reste la règle — gitleaks (contrôle 4)
-    rattraperait une valeur en clair suffisamment entropique.
+    `applications_predict_s3_*` utilise `| default('')` et **n'est pas** dans
+    `secret_vars`. Le garder en indirection Vault reste la règle — gitleaks
+    (contrôle 4) rattraperait une valeur en clair suffisamment entropique.
 
 ## gitleaks
 

@@ -1,0 +1,75 @@
+# Déployé par le rôle Ansible "postgres" — ne pas éditer sur l'hôte.
+# Base EnerVision (PostgreSQL nu). Le schéma est géré côté API
+# (SQLAlchemy / migrations Alembic), pas ici.
+services:
+  postgres:
+    image: {{ postgres_image }}
+    container_name: postgres
+    restart: unless-stopped
+    # Qui meurt en premier si la VM manque de mémoire, plutôt que de laisser
+    # le noyau choisir au score — c'est-à-dire souvent le plus gros, donc la
+    # base. La base ne se sacrifie pas : la tuer en pleine écriture coûte une reprise.
+    oom_score_adj: -500
+
+    ports:
+      - "{{ postgres_bind_address }}:{{ postgres_port }}:5432"
+
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?definir POSTGRES_DB dans .env}
+      POSTGRES_USER: ${POSTGRES_USER:?definir POSTGRES_USER dans .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?definir POSTGRES_PASSWORD dans .env}
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    networks:
+      - db_network
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    deploy:
+      resources:
+        limits:
+          memory: {{ postgres_memory_limit }}
+          cpus: "{{ postgres_cpu_limit }}"
+{% if postgres_pgweb_enabled | bool %}
+
+  # Console SQL web temporaire — consultée par tunnel SSH, jamais routée par
+  # Traefik. À retirer après la phase de développement (postgres_pgweb_enabled).
+  pgweb:
+    image: {{ postgres_pgweb_image }}
+    container_name: pgweb
+    restart: unless-stopped
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    ports:
+      - "{{ postgres_pgweb_bind_address }}:{{ postgres_pgweb_port }}:8081"
+
+    environment:
+      PGWEB_DATABASE_URL: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
+
+    networks:
+      - db_network
+
+    deploy:
+      resources:
+        limits:
+          memory: {{ postgres_pgweb_memory_limit }}
+          cpus: "{{ postgres_pgweb_cpu_limit }}"
+{% endif %}
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  db_network:
+    external: true
+    name: db_network

@@ -119,9 +119,10 @@ au score — c'est-à-dire souvent le plus gros, donc la base :
 
 | `oom_score_adj` | Conteneurs |
 |---|---|
-| −500 | `timescaledb`, `traefik` |
+| −500 | `postgres`, `traefik` |
+| −300 | `kafka` |
 | −200 | `enervision-api`, `enervision-serving` |
-| +300 | `enervision-mlflow` |
+| +300 | `mlflow` |
 | +500 | `front`, `collector-poller`, `etl`, `predict-cron` |
 | +800 | `training`, `drift` |
 

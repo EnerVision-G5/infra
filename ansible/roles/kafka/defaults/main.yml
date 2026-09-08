@@ -1,0 +1,48 @@
+---
+# Répertoire de déploiement sur l'hôte (même convention que les autres rôles).
+kafka_dir: /opt/srv/kafka
+
+# Images épinglées. base/infra utilise :latest sur les deux — figées ici comme
+# le reste de la stack (cf. Référence › Versions).
+kafka_image: "apache/kafka:3.9.2"
+kafka_ui_image: "ghcr.io/kafbat/kafka-ui:v1.5.0"
+
+# Nœud KRaft unique (broker + controller). Mono-nœud on-premise : un seul
+# quorum voter, réplication 1 partout.
+kafka_node_id: 1
+# Identifiant de cluster fixe : le volume est formaté une seule fois avec cette
+# valeur, un redéploiement retrouve le même cluster au lieu d'en reformater un.
+kafka_cluster_id: "enervision-kraft-cluster1"
+# Nom affiché dans kafka-ui.
+kafka_cluster_name: enervision
+
+# Le broker n'annonce qu'un listener interne (PLAINTEXT://kafka:9092) : un
+# client hors du réseau Docker ne peut pas s'y connecter par un simple bind
+# loopback (l'annonce "kafka:9092" n'est pas résoluble côté hôte).
+# L'inspection passe par kafka-ui. Passer kafka_publish_broker à true ajoute le
+# mapping 127.0.0.1:9092 pour un usage kafka CLI *depuis la VM elle-même*.
+kafka_publish_broker: false
+kafka_bind_address: "127.0.0.1"
+kafka_port: 9092
+
+# Console web temporaire — consultée par tunnel SSH
+# (ssh -L {{ kafka_ui_port }}:127.0.0.1:{{ kafka_ui_port }} <hote>), jamais
+# routée par Traefik. À retirer après la phase de développement.
+kafka_ui_enabled: true
+kafka_ui_bind_address: "127.0.0.1"
+kafka_ui_port: 8080
+
+# Garde-fous ressources.
+kafka_memory_limit: 1G
+kafka_cpu_limit: "1.0"
+kafka_ui_memory_limit: 256M
+kafka_ui_cpu_limit: "0.25"
+
+# Topics créés au démarrage par le job kafka-init (idempotent : --if-not-exists).
+kafka_topics:
+  - name: "energy.data.raw"
+    partitions: 1
+    replication_factor: 1
+  - name: "energy.data.enriched"
+    partitions: 1
+    replication_factor: 1

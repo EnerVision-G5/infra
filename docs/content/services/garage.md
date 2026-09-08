@@ -1,8 +1,13 @@
 # Garage
 
-Stockage objet compatible **S3**, mono-nœud. Sert les artefacts MLflow et les
-partitions de variables de la chaîne predict. Expose aussi un endpoint web
+Stockage objet compatible **S3**, mono-nœud. Sert les partitions de variables
+de la chaîne predict et l'historique de référence. Expose aussi un endpoint web
 (hébergement statique depuis un bucket) et une interface d'administration.
+
+!!! note "MLflow n'utilise plus Garage"
+    Les artefacts MLflow vont sur le volume local du rôle `mlflow` ou sur
+    **Azure Blob** (`wasbs://`), plus sur Garage. Voir
+    [Services › MLflow](mlflow.md).
 
 | | |
 |---|---|
@@ -60,7 +65,6 @@ etl) reste manuelle, une fois : voir
 | `etl` | S3 (`storage_network`) | écrit les partitions de variables (`s3://enervision-features`) |
 | `serving` | S3 | relit ces partitions |
 | `training` | S3 | apprend sur 90 j de partitions |
-| `mlflow` | S3 *(si `artifacts_destination` en `s3://`)* | artefacts des runs |
 
 Les clients lisent les variables **`AWS_*`** (`AWS_ENDPOINT_URL` pointe le
 conteneur, `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` produits par

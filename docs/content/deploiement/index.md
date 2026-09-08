@@ -4,18 +4,18 @@ Deux playbooks, joués dans cet ordre :
 
 | Playbook | Cible | Ce qu'il fait |
 |---|---|---|
-| `provision.yml` | `all` | réseaux Docker partagés → Traefik → Garage → TimescaleDB → monitoring |
+| `provision.yml` | `all` | réseaux Docker partagés → Traefik → Garage → PostgreSQL → Kafka → MLflow → monitoring |
 | `deploy.yml` | `application_servers` | rôle `applications` : front, api, et la chaîne predict |
 
 ## Pourquoi cet ordre
 
-`deploy.yml` suppose que les réseaux, Traefik, Garage et TimescaleDB existent
-déjà : l'API se raccroche à `proxy_network` et `db_network`, `serving` lit
-Garage, etc. `provision.yml` d'abord, donc.
+`deploy.yml` suppose que les réseaux, Traefik, Garage, PostgreSQL et MLflow
+existent déjà : l'API se raccroche à `proxy_network` et `db_network`, `serving`
+résout un alias dans MLflow et lit Garage, etc. `provision.yml` d'abord, donc.
 
 La base est déployée **vide** par `provision.yml`. C'est l'entrypoint du
 conteneur `api` (dans `deploy.yml`) qui applique le schéma via
-`alembic upgrade head` — voir [Services › TimescaleDB](../services/timescaledb.md).
+`alembic upgrade head` — voir [Services › PostgreSQL](../services/postgres.md).
 
 ## Prérequis
 
@@ -34,7 +34,7 @@ Sur le poste de contrôle :
 ## Commandes
 
 ```bash
-# Provisionnement (réseaux Docker + Traefik + Garage + TimescaleDB + monitoring)
+# Provisionnement (réseaux Docker + Traefik + Garage + PostgreSQL + Kafka + MLflow + monitoring)
 ansible-playbook ansible/playbooks/provision.yml --ask-vault-pass
 
 # Déploiement applicatif
@@ -48,7 +48,9 @@ ansible-playbook ansible/playbooks/deploy.yml --ask-vault-pass
 ```bash
 ansible-playbook ansible/playbooks/provision.yml --tags traefik      --ask-vault-pass
 ansible-playbook ansible/playbooks/provision.yml --tags garage       --ask-vault-pass
-ansible-playbook ansible/playbooks/provision.yml --tags timescaledb  --ask-vault-pass   # ou --tags database
+ansible-playbook ansible/playbooks/provision.yml --tags postgres     --ask-vault-pass   # ou --tags database
+ansible-playbook ansible/playbooks/provision.yml --tags kafka        --ask-vault-pass
+ansible-playbook ansible/playbooks/provision.yml --tags mlflow       --ask-vault-pass
 ansible-playbook ansible/playbooks/provision.yml --tags monitoring   --ask-vault-pass
 ```
 

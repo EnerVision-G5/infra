@@ -1,0 +1,77 @@
+# Déployé par le rôle Ansible "mlflow" — ne pas éditer sur l'hôte.
+# Serveur MLflow : tracking + Model Registry.
+#   - backend store : SQLite dans le volume mlflow_data (le registre exige un
+#     backend relationnel ; la base APPLICATIVE reste Postgres, on n'y touche pas)
+#   - artefacts : {{ mlflow_artifacts_destination }}, servis en proxy par le
+#     serveur (--serve-artifacts) → les clients (serving, training) n'ont besoin
+#     que de MLFLOW_TRACKING_URI
+#
+# Interface : tunnel SSH vers http://127.0.0.1:{{ mlflow_port }}
+services:
+  mlflow:
+    build: .
+    image: {{ mlflow_image }}
+    container_name: {{ mlflow_container_name }}
+    restart: unless-stopped
+    # Registre consultable : reconstructible, et l'un des plus gros résidents de
+    # la VM. Il cède le pas à la base et au broker si la mémoire manque.
+    oom_score_adj: 300
+
+    command:
+      - mlflow
+      - server
+      - --host=0.0.0.0
+      - --port={{ mlflow_port }}
+      - --backend-store-uri={{ mlflow_backend_store_uri }}
+      - --artifacts-destination={{ mlflow_artifacts_destination }}
+      - --serve-artifacts
+      - --allowed-hosts={{ mlflow_allowed_hosts | join(',') }}
+
+    env_file:
+      - .env
+
+    # Publié sur la seule boucle locale : consulté par tunnel SSH, jamais
+    # joignable depuis le réseau. MLflow n'a aucune authentification propre.
+    ports:
+      - "{{ mlflow_bind_address }}:{{ mlflow_port }}:{{ mlflow_port }}"
+
+    # Backend SQLite + artefacts (si destination locale) hors image : les runs
+    # et versions enregistrées survivent à un redéploiement.
+    volumes:
+      - mlflow_data:/mlflow
+
+    # ml_network uniquement : les clients serving / training joignent le registre
+    # par ce réseau. Azure Blob est atteint en HTTPS sortant vers
+    # *.blob.core.windows.net, pas par un réseau Docker interne.
+    networks:
+      - ml_network
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://localhost:{{ mlflow_port }}/health')"
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+    deploy:
+      resources:
+        limits:
+          memory: {{ mlflow_memory_limit }}
+          cpus: "{{ mlflow_cpu_limit }}"
+
+volumes:
+  mlflow_data:
+    driver: local
+
+networks:
+  ml_network:
+    external: true
+    name: ml_network

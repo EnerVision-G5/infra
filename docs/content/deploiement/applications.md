@@ -29,7 +29,6 @@ flowchart TD
 | `applications_api_jwt_secret` ≥ 32 caractères | `api` activé |
 | `applications_api_cors_allowed_origins` non vide, sans `*` | `api` activé |
 | clés S3 Garage présentes | `storage_root` en `s3://` **et** un de `serving/training/etl` activé |
-| `applications_mlflow_basic_auth_users` non vide | `mlflow` activé **et** `applications_mlflow_expose` |
 | `applications_front_csp_connect_src` non vide, sans `*` | `front` activé |
 | `applications_front_api_base_url` non vide | `front` activé |
 | au moins un service dans `applications_enabled` | toujours |

@@ -43,14 +43,14 @@ Renseigner **tous** les `vault_*` requis :
 | Clé | Produit par / format |
 |---|---|
 | `vault_ansible_ssh_password` | mot de passe SSH de la VM |
-| `vault_timescaledb_password` | libre, fort |
+| `vault_postgres_password` | libre, fort |
 | `vault_ghcr_username` / `vault_ghcr_token` | compte GitHub + PAT `read:packages` |
 | `vault_garage_rpc_secret` | `openssl rand -hex 32` |
 | `vault_garage_admin_token` / `vault_garage_metrics_token` | `openssl rand -hex 32` |
 | `vault_monitoring_grafana_admin_password` | libre, fort |
 | `vault_applications_api_secret_key` | `python -c "import secrets; print(secrets.token_urlsafe(48))"` (≥ 32) |
 | `vault_garage_s3_access_key_id` / `vault_garage_s3_secret_access_key` | **après l'étape 7** (`garage key create`) |
-| `vault_applications_mlflow_basic_auth_users` | `htpasswd -nbB <user> '<pass>'` |
+| `vault_mlflow_azure_connection_string` | *(seulement si artefacts MLflow sur Azure Blob)* `az storage account show-connection-string` |
 
 ## 6 — Provisionnement
 
@@ -58,9 +58,10 @@ Renseigner **tous** les `vault_*` requis :
 ansible-playbook ansible/playbooks/provision.yml --ask-vault-pass
 ```
 
-Vérifier : Traefik, Garage, TimescaleDB, la stack monitoring tournent.
-Le layout Garage est appliqué automatiquement (`/garage status` doit montrer
-le nœud avec une zone et une capacité).
+Vérifier : Traefik, Garage, PostgreSQL, Kafka, MLflow, la stack monitoring
+tournent. Le layout Garage est appliqué automatiquement (`/garage status` doit
+montrer le nœud avec une zone et une capacité) ; `kafka-init` doit être sorti
+en `Exited (0)`.
 
 ## 7 — Seaux + clé Garage
 

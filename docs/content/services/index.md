@@ -7,7 +7,9 @@ volumes, configuration, endpoints, points d'attention, dépannage.
 |---|---|---|
 | Traefik | `provision.yml` | [traefik](traefik.md) |
 | Garage | `provision.yml` | [garage](garage.md) |
-| TimescaleDB | `provision.yml` | [timescaledb](timescaledb.md) |
+| PostgreSQL | `provision.yml` | [postgres](postgres.md) |
+| Kafka | `provision.yml` | [kafka](kafka.md) |
+| MLflow | `provision.yml` | [mlflow](mlflow.md) |
 | Monitoring | `provision.yml` | [monitoring](monitoring.md) |
 | Applications | `deploy.yml` | [applications](applications/index.md) — front, api, et la chaîne predict |
 

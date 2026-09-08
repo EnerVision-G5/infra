@@ -1,9 +1,14 @@
-# predict — collector, etl, training, mlflow, serving
+# predict — collector, etl, training, serving
 
-Cinq conteneurs déployés par le rôle `applications` à partir des images du
+Quatre conteneurs déployés par le rôle `applications` à partir des images du
 dépôt `predict`. Ce qui suit décrit **leur déploiement** (image, réseaux,
 volumes, `.env`, déclenchement) — pas le fonctionnement de la chaîne ML,
 documenté côté dépôt `predict`.
+
+Le registre **MLflow**, pivot de la chaîne, n'est plus déployé ici : il a son
+propre rôle (`provision.yml`) — voir [Services › MLflow](../mlflow.md).
+`training` et `serving` le joignent par `MLFLOW_TRACKING_URI=http://mlflow:5000`
+sur `ml_network`.
 
 La configuration de ces services est un **YAML en couches embarqué dans
 l'image** ; les `.env` générés par le rôle ne fournissent que les
@@ -103,40 +108,6 @@ Un déploiement ne réentraîne rien : il met à jour l'image du prochain run.
 
 ---
 
-## mlflow
-
-| | |
-|---|---|
-| `kind` | `web` |
-| Image | *= `predict/training`* (`shares_image_with: training`) |
-| Conteneur | `enervision-mlflow` |
-| Réseaux | `ml_network` (+ `proxy_network` si `applications_mlflow_expose`, + `storage_network` si `applications_mlflow_artifacts_destination` en `s3://`) |
-| Port publié | `127.0.0.1:5000` (tunnel SSH) |
-| Volume | `mlruns` → `/mlruns` (backend SQLite + artefacts, hors image) |
-| Commande | `mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:////mlruns/mlflow.db --artifacts-destination /mlruns/artifacts --allowed-hosts …` |
-
-`--allowed-hosts` liste `enervision-mlflow:5000`, `localhost:5000`,
-`127.0.0.1:5000` (+ le domaine public si la route existe) — MLflow 3 renvoie
-`403` à tout `Host` inconnu.
-
-Second contrôle, indépendant du premier : MLflow 3 valide aussi l'en-tête
-`Origin` des requêtes d'écriture, contre `MLFLOW_SERVER_CORS_ALLOWED_ORIGINS`
-(posée dans le `.env` quand la route existe). Les origines locales sont
-toujours admises — le tunnel SSH n'en dépend donc pas.
-
-**Exposition** : `applications_mlflow_expose` = `true` → route
-`mlflow.enervision.com` **avec authentification basique obligatoire**
-(`applications_mlflow_basic_auth_users`, format htpasswd, Vault). Le rôle
-refuse de déployer la route sans ces identifiants.
-
-Tunnel :
-
-```bash
-ssh -p 22 -L 5000:127.0.0.1:5000 root@10.105.200.46   # puis http://localhost:5000
-```
-
----
-
 ## serving
 
 | | |
@@ -170,8 +141,7 @@ une URI `s3://` et qu'aucune clé n'est fournie (assert sur l'intersection de
 | Symptôme | Piste |
 |---|---|
 | `enervision-serving` répond `503` | MLflow injoignable, ou aucun modèle sous l'alias configuré |
-| `403` MLflow depuis training/serving | `Host` absent de `--allowed-hosts` |
-| UI MLflow affichée mais `403` sur `/ajax-api/**` | `Origin` absente de `MLFLOW_SERVER_CORS_ALLOWED_ORIGINS` (schéma compris) |
+| `403` MLflow depuis training/serving | `Host` absent de `--allowed-hosts` (rôle `mlflow`) |
 | `training` tué prématurément | `TimeoutStartSec` — `applications_training_timeout_seconds` |
 | `collector` : `connection refused` vers la source | `applications_collector_mock_api_url` faux / source injoignable |
 | services predict : *NoCredentialsError* / bucket vide | clés S3 absentes du Vault, ou clé `garage` sans droit sur le bucket |

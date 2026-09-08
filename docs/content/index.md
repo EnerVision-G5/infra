@@ -11,8 +11,8 @@ tourne sur la VM, comment c'est déployé, et comment l'exploiter.
   système) : Ansible ne fait que déployer les stacks — jamais les paquets,
   SSH, le pare-feu ni `/etc/docker/daemon.json`.
 - **Deux playbooks** :
-    - `provision.yml` → réseaux Docker partagés, Traefik, Garage, TimescaleDB,
-      monitoring ;
+    - `provision.yml` → réseaux Docker partagés, Traefik, Garage, PostgreSQL,
+      Kafka, MLflow, monitoring ;
     - `deploy.yml` → les applications (front, api, et la chaîne predict).
 - Les images applicatives sont construites par les pipelines de **leurs
   propres dépôts** (`dashboard`, `api`, `predict`) et publiées sur le GHCR de
@@ -27,7 +27,7 @@ flowchart LR
     T --> S[serving]
     T --> G[Garage S3 / web]
     T --> GR[Grafana]
-    A --> DB[(TimescaleDB)]
+    A --> DB[(PostgreSQL)]
     A -->|/predict| S
     S --> ML[MLflow]
     S --> GA[(Garage)]

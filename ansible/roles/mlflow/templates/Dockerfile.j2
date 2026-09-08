@@ -1,0 +1,8 @@
+# Généré par le rôle Ansible "mlflow" — ne pas éditer sur l'hôte.
+FROM {{ mlflow_base_image }}
+
+# azure-storage-blob : support des artefacts sur Azure Blob (wasbs://).
+# azure-identity : résolution d'identité par défaut (utile si l'on passe un
+# jour de la chaîne de connexion à une identité managée). L'image officielle
+# MLflow ne tire ni l'un ni l'autre.
+RUN pip install --no-cache-dir azure-storage-blob azure-identity

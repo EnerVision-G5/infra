@@ -30,15 +30,36 @@ Les rôles portent chacun leurs propres défauts dans `defaults/main.yml` ;
 | `garage_layout_zone` *(défaut rôle)* | `dc1` |
 | `garage_layout_capacity` *(défaut rôle)* | `64G` |
 
-## TimescaleDB
+## PostgreSQL
 
 | Variable | Valeur |
 |---|---|
-| `timescaledb_db` | `enervision` |
-| `timescaledb_user` | `enervision` |
-| `timescaledb_image` *(défaut rôle)* | `timescale/timescaledb:2.17.2-pg16` |
-| `timescaledb_bind_address` *(défaut rôle)* | `127.0.0.1` |
-| `timescaledb_port` *(défaut rôle)* | `5432` |
+| `postgres_db` | `enervision` |
+| `postgres_user` | `enervision` |
+| `postgres_image` *(défaut rôle)* | `postgres:17.10-alpine3.24` |
+| `postgres_bind_address` *(défaut rôle)* | `127.0.0.1` |
+| `postgres_port` *(défaut rôle)* | `5432` |
+| `postgres_pgweb_enabled` *(défaut rôle)* | `true` (console temporaire, `127.0.0.1:8081`) |
+
+## Kafka
+
+| Variable | Valeur |
+|---|---|
+| `kafka_image` *(défaut rôle)* | `apache/kafka:3.9.2` |
+| `kafka_ui_image` *(défaut rôle)* | `ghcr.io/kafbat/kafka-ui:v1.5.0` |
+| `kafka_cluster_id` *(défaut rôle)* | `enervision-kraft-cluster1` |
+| `kafka_publish_broker` *(défaut rôle)* | `false` |
+| `kafka_ui_enabled` *(défaut rôle)* | `true` (console temporaire, `127.0.0.1:8080`) |
+| `kafka_topics` *(défaut rôle)* | `energy.data.raw`, `energy.data.enriched` (1 partition, réplication 1) |
+
+## MLflow
+
+| Variable | Valeur |
+|---|---|
+| `mlflow_base_image` *(défaut rôle)* | `ghcr.io/mlflow/mlflow:v3.1.1` (FROM du Dockerfile généré) |
+| `mlflow_backend_store_uri` *(défaut rôle)* | `sqlite:////mlflow/mlflow.db` |
+| `mlflow_artifacts_destination` *(défaut rôle)* | `/mlflow/artifacts` (volume local ; `wasbs://…` pour Azure Blob) |
+| `mlflow_azure_connection_string` | `vault_mlflow_azure_connection_string` (requis si destination `wasbs://`) |
 
 ## Monitoring
 
@@ -55,8 +76,6 @@ Les rôles portent chacun leurs propres défauts dans `defaults/main.yml` ;
 | `applications_front_host` | `app.enervision.com` |
 | `applications_api_host` | `api.enervision.com` |
 | `applications_serving_host` | `predict.enervision.com` |
-| `applications_mlflow_expose` | `true` |
-| `applications_mlflow_host` | `mlflow.enervision.com` |
 | `applications_api_environment` | `production` |
 | `applications_api_auth_enabled` | `true` |
 | `applications_api_jwt_algorithm` | `HS256` |
@@ -84,8 +103,9 @@ Les rôles portent chacun leurs propres défauts dans `defaults/main.yml` ;
 | `applications_etl_sha` | `ghcr.io/enervision-g5/predict/etl` | `sha-da9407f…` |
 | `applications_collector_sha` | `ghcr.io/enervision-g5/predict/collector` | `sha-48709c6…` |
 
-`mlflow` réutilise l'image `training` ; `predict-cron` réutilise l'image
-`api`. Voir [Services › Applications](../services/applications/index.md).
+`predict-cron` réutilise l'image `api`. MLflow n'est plus une application : il
+est déployé par le rôle `mlflow` (`provision.yml`), avec sa propre image
+construite sur place. Voir [Services › MLflow](../services/mlflow.md).
 
 ## `applications_enabled`
 
@@ -93,7 +113,6 @@ Les rôles portent chacun leurs propres défauts dans `defaults/main.yml` ;
 applications_enabled:
   - front
   - api
-  - mlflow
   - serving
   - training
   - collector
@@ -111,6 +130,7 @@ docker_external_networks:
   - storage_network
   - ml_network
   - monitoring_network
+  - broker_network
 ```
 
 ## Rattachement des secrets (indirection Vault)
@@ -120,12 +140,12 @@ docker_external_networks:
 | `garage_rpc_secret` | `vault_garage_rpc_secret` | garage |
 | `garage_admin_token` | `vault_garage_admin_token` | garage, garage-webui |
 | `garage_metrics_token` | `vault_garage_metrics_token` | garage |
-| `timescaledb_password` | `vault_timescaledb_password` | timescaledb, applications |
+| `postgres_password` | `vault_postgres_password` | postgres, applications |
 | `ghcr_username` | `vault_ghcr_username` | applications (login GHCR) |
 | `ghcr_token` | `vault_ghcr_token` | applications (login GHCR) |
 | `monitoring_grafana_admin_password` | `vault_monitoring_grafana_admin_password` | monitoring |
 | `applications_api_jwt_secret` | `vault_applications_api_secret_key` | api (`JWT_SECRET`) |
 | `applications_predict_s3_access_key_id` | `vault_garage_s3_access_key_id` | serving, training, etl |
 | `applications_predict_s3_secret_access_key` | `vault_garage_s3_secret_access_key` | serving, training, etl |
-| `applications_mlflow_basic_auth_users` | `vault_applications_mlflow_basic_auth_users` | mlflow (si exposé) |
+| `mlflow_azure_connection_string` | `vault_mlflow_azure_connection_string` | mlflow (si artefacts `wasbs://`) |
 | `ansible_password` | `vault_ansible_ssh_password` | connexion SSH (`hosts.yml`) |

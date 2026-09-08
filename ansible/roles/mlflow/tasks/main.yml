@@ -1,0 +1,62 @@
+---
+# Sans chaîne de connexion, le serveur démarre mais échoue au premier dépôt
+# d'artefact — après le déploiement, sur un conteneur qui a l'air sain. Autant
+# le dire avant d'y toucher.
+- name: Vérifier que le stockage d'artefacts Azure a une chaîne de connexion
+  ansible.builtin.assert:
+    that:
+      - mlflow_azure_connection_string | default('') | length > 0
+    fail_msg: >-
+      mlflow_artifacts_destination désigne un conteneur Azure Blob
+      ({{ mlflow_artifacts_destination }}) mais mlflow_azure_connection_string
+      est vide. La récupérer avec `az storage account show-connection-string`
+      et la stocker dans le vault sous vault_mlflow_azure_connection_string.
+    quiet: true
+  no_log: true
+  when: mlflow_artifacts_destination.startswith('wasbs://')
+
+- name: Create mlflow directory
+  ansible.builtin.file:
+    path: "{{ mlflow_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Generate mlflow Dockerfile
+  ansible.builtin.template:
+    src: Dockerfile.j2
+    dest: "{{ mlflow_dir }}/Dockerfile"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Generate mlflow docker compose file
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ mlflow_dir }}/compose.yml"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Generate mlflow environment file
+  ansible.builtin.template:
+    src: mlflow.env.j2
+    dest: "{{ mlflow_dir }}/.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+# build: policy → construit l'image si elle manque. Un changement de
+# mlflow_base_image demande de rejouer avec `--build` (cf. page service).
+- name: Deploy mlflow
+  community.docker.docker_compose_v2:
+    project_src: "{{ mlflow_dir }}"
+    files:
+      - compose.yml
+    env_files:
+      - .env
+    build: policy
+    state: present

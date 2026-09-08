@@ -1,0 +1,128 @@
+# Déployé par le rôle Ansible "kafka" — ne pas éditer sur l'hôte.
+# Broker Kafka en mode KRaft (mono-nœud : broker + controller), plus un job de
+# création de topics et une console web temporaire.
+services:
+  kafka:
+    image: {{ kafka_image }}
+    container_name: kafka
+    restart: unless-stopped
+    # Le broker porte l'état des topics (volume kafka_data) : le tuer en pleine
+    # écriture coûte une reprise. Il cède le pas à la base mais passe avant les
+    # services sans état.
+    oom_score_adj: -300
+{% if kafka_publish_broker | bool %}
+
+    # Publié sur la seule boucle locale : usage kafka CLI depuis la VM même.
+    # Les clients conteneurisés passent par le réseau "broker_network".
+    ports:
+      - "{{ kafka_bind_address }}:{{ kafka_port }}:9092"
+{% endif %}
+
+    environment:
+      KAFKA_NODE_ID: "{{ kafka_node_id }}"
+      CLUSTER_ID: "{{ kafka_cluster_id }}"
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "{{ kafka_node_id }}@kafka:9093"
+
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+
+      # Persistance hors image : les topics survivent à un redéploiement.
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+
+    networks:
+      - broker_network
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+    deploy:
+      resources:
+        limits:
+          memory: {{ kafka_memory_limit }}
+          cpus: "{{ kafka_cpu_limit }}"
+
+  # Création des topics au démarrage. Job ponctuel (restart: "no") : il attend
+  # le broker, crée ce qui manque, puis sort.
+  kafka-init:
+    image: {{ kafka_image }}
+    container_name: kafka-init
+    restart: "no"
+
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        echo 'Attente de Kafka...'
+        until /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list >/dev/null 2>&1; do
+          sleep 2
+        done
+        echo 'Création des topics...'
+{% for topic in kafka_topics %}
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists \
+          --topic {{ topic.name }} --partitions {{ topic.partitions }} --replication-factor {{ topic.replication_factor }}
+{% endfor %}
+        echo 'Topics prêts.'
+
+    networks:
+      - broker_network
+{% if kafka_ui_enabled | bool %}
+
+  # Console web temporaire — consultée par tunnel SSH, jamais routée par
+  # Traefik. À retirer après la phase de développement (kafka_ui_enabled).
+  kafka-ui:
+    image: {{ kafka_ui_image }}
+    container_name: kafka-ui
+    restart: unless-stopped
+
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+    ports:
+      - "{{ kafka_ui_bind_address }}:{{ kafka_ui_port }}:8080"
+
+    environment:
+      KAFKA_CLUSTERS_0_NAME: ${KAFKA_UI_CLUSTER_NAME:-enervision}
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      DYNAMIC_CONFIG_ENABLED: "true"
+
+    networks:
+      - broker_network
+
+    deploy:
+      resources:
+        limits:
+          memory: {{ kafka_ui_memory_limit }}
+          cpus: "{{ kafka_ui_cpu_limit }}"
+{% endif %}
+
+volumes:
+  kafka_data:
+    driver: local
+
+networks:
+  broker_network:
+    external: true
+    name: broker_network

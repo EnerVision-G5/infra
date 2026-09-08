@@ -41,8 +41,6 @@ applications_collector_sha: ""
 applications_etl_sha: ""
 
 # Domaines publics (routage Traefik). Surchargeables dans group_vars.
-# MLflow n'est pas dans cette liste par défaut : il n'a pas de route tant que
-# applications_mlflow_expose ne le demande pas (voir plus bas).
 applications_front_host: "app.enervision.com"
 applications_api_host: "api.enervision.com"
 applications_serving_host: "predict.enervision.com"
@@ -53,14 +51,12 @@ applications_serving_host: "predict.enervision.com"
 applications_front_port: 8080
 applications_api_port: 8080
 applications_serving_port: 8000
-applications_mlflow_port: 5000
 
 # Réseaux Docker externes requis par la stack applicative (créés si absents).
 #   proxy_network   : exposition via Traefik
-#   db_network      : accès à TimescaleDB (api, collector, etl, training)
-#   ml_network      : registre MLflow, et appels internes api <-> serving
-#   storage_network : partitions de variables sur Garage (serving, training,
-#                     etl, et mlflow si ses artefacts vont sur s3://)
+#   db_network      : accès à PostgreSQL (api, collector, etl, training)
+#   ml_network      : registre MLflow (rôle mlflow), et appels internes api <-> serving
+#   storage_network : partitions de variables sur Garage (serving, training, etl)
 applications_networks:
   - proxy_network
   - api_network
@@ -94,39 +90,6 @@ applications_api_cpu_limit: "1.5"
 applications_serving_memory_limit: 1G
 applications_serving_cpu_limit: "2.0"
 
-# Registre MLflow. Trois plafonds qui se tiennent, et qu'il faut lire ensemble.
-#
-# `workers` d'abord, parce que c'est lui qui décide des deux autres. MLflow en
-# lance QUATRE par défaut, chacun chargeant l'application entière — laquelle
-# est ici l'image de training : mlflow, xgboost, scikit-learn, pandas. Mesuré
-# à froid sur cette image, juste après le démarrage :
-#
-#   1 worker  -> 1671 Mo      2 workers -> 1866 Mo      4 workers -> 2196 Mo
-#
-# soit un socle partagé d'environ 1,6 Go, puis ~195 Mo par worker de plus.
-#
-# 2 et non 4 : le registre a trois clients — training qui enregistre ses
-# versions, serving qui résout un alias au démarrage, et un exploitant qui
-# consulte l'interface par tunnel. Il n'y a aucune concurrence à absorber.
-# 2 et non 1 : une requête lente sur un artefact ne doit pas rendre le
-# registre muet pour l'entraînement qui attend derrière.
-applications_mlflow_workers: 2
-
-# 2G et non 768M. L'ancienne valeur était sous le socle du service : le
-# conteneur partait, chargeait ses imports, et se faisait tuer par l'OOM avant
-# d'avoir servi quoi que ce soit — ou repartait en boucle. Un registre qui
-# tombe, c'est serving qui ne résout plus son alias et refuse les prévisions
-# en 503, et training qui ne peut plus ouvrir de run.
-#
-# 2G laisse ~130 Mo au-dessus des 1866 Mo mesurés à deux workers. Descendre
-# sous 2G suppose de descendre à un worker d'abord, et de remesurer.
-applications_mlflow_memory_limit: 2G
-
-# Un vCPU. Le registre lit et écrit du SQLite et relaie des artefacts : il
-# n'attend rien du parallélisme, et lui en donner plus le prendrait aux
-# services qui, eux, en ont besoin.
-applications_mlflow_cpu_limit: "1.0"
-
 applications_collector_memory_limit: 384M
 applications_collector_cpu_limit: "0.5"
 
@@ -147,16 +110,17 @@ applications_drift_memory_limit: 2G
 applications_drift_cpu_limit: "2.0"
 
 # Connexion applicative à la base (construite à partir des variables du rôle
-# timescaledb ; le mot de passe vient de group_vars chiffré avec ansible-vault).
+# postgres ; le mot de passe vient de group_vars chiffré avec ansible-vault).
+# L'hôte `postgres` est le nom de conteneur du rôle, résolu sur db_network.
 #
 # Deux dialectes, non interchangeables :
 #  - l'API ouvre la base avec SQLAlchemy asynchrone -> asyncpg ;
 #  - les jobs batch de predict (collector, etl, training) l'ouvrent en
 #    synchrone via psycopg. Le service serving, lui, ne touche pas la base.
 applications_api_database_url: >-
-  postgresql+asyncpg://{{ timescaledb_user }}:{{ timescaledb_password }}@timescaledb:5432/{{ timescaledb_db }}
+  postgresql+asyncpg://{{ postgres_user }}:{{ postgres_password }}@postgres:5432/{{ postgres_db }}
 applications_predict_database_url: >-
-  postgresql+psycopg://{{ timescaledb_user }}:{{ timescaledb_password }}@timescaledb:5432/{{ timescaledb_db }}
+  postgresql+psycopg://{{ postgres_user }}:{{ postgres_password }}@postgres:5432/{{ postgres_db }}
 
 # --------------------------------------------------------------------------
 # Réglages communs aux services du dépôt predict (serving, training, etl,
@@ -167,9 +131,6 @@ applications_predict_database_url: >-
 # Racine des partitions de variables produites par l'ETL, lues par serving et
 # training. Chemin local en dev, URI s3:// vers Garage en déploiement.
 applications_predict_storage_root: "data"
-# Registre déployé par ce rôle. Chaque application a son propre projet compose,
-# donc l'alias réseau du service (`mlflow`) n'est visible que dans son projet :
-# c'est le nom de conteneur qui résout d'un projet à l'autre sur ml_network.
 # Racine de l'historique de référence — les CSV par site, deux années horaires,
 # chargés une seule fois par `python -m collector.datasets`.
 #
@@ -180,8 +141,11 @@ applications_predict_storage_root: "data"
 # collecteur : ils sont déposés une fois sur Garage, cf. le README de predict.
 applications_predict_datasets_root: "s3://enervision-datasets"
 
-applications_predict_mlflow_tracking_uri: >-
-  http://enervision-mlflow:{{ applications_mlflow_port }}
+# Registre déployé par le rôle `mlflow` (provision.yml). Chaque application a
+# son propre projet compose : l'alias de service `mlflow` n'est visible que
+# dans le projet du rôle mlflow, c'est le nom de conteneur qui résout d'un
+# projet à l'autre sur ml_network — et il vaut justement `mlflow`.
+applications_predict_mlflow_tracking_uri: "http://mlflow:5000"
 
 # --------------------------------------------------------------------------
 # Amorçage : jeu de variables réduit tant que la collecte est jeune.
@@ -299,56 +263,10 @@ applications_front_prediction_source: "api"
 # démarrer. Défini dans group_vars par indirection Vault.
 
 # --------------------------------------------------------------------------
-# MLflow — registre de modèles et journal des entraînements. Porté par l'image
-# predict/training, qui embarque MLflow et sert aussi de serveur : une seule
-# image pour le client et le serveur garantit qu'ils sont de la même version,
-# un écart entre les deux produisant des runs illisibles dans l'interface.
-#
-# C'est le pivot de la chaîne ML : training y enregistre ses versions, serving
-# y résout l'alias du modèle qu'il sert. Sans lui, serving démarre et refuse
-# les prévisions en 503.
-# --------------------------------------------------------------------------
-# Backend store : le Model Registry exige une base, un file store ne suffit
-# pas — et sans registre, serving n'aurait pas d'alias à résoudre. SQLite dans
-# le volume, hors image, pour que les runs survivent à un redéploiement.
-applications_mlflow_backend_store_uri: "sqlite:////mlruns/mlflow.db"
-# Artefacts servis par le registre lui-même (proxy). Une URI s3:// vers Garage
-# est acceptée : le service prend alors storage_network et les clés S3.
-applications_mlflow_artifacts_destination: "/mlruns/artifacts"
-# MLflow 3 refuse tout en-tête Host qu'il ne reconnaît pas, par protection
-# contre le DNS rebinding, et répond 403 — y compris à ses propres clients.
-# Sans cette liste, training ne peut pas ouvrir de run et serving ne peut pas
-# résoudre son alias. Le domaine public y est ajouté quand la route existe.
-applications_mlflow_allowed_hosts:
-  - "enervision-mlflow:{{ applications_mlflow_port }}"
-  - "localhost:{{ applications_mlflow_port }}"
-  - "127.0.0.1:{{ applications_mlflow_port }}"
-
-# Le registre décide du modèle servi en production : déplacer un alias suffit
-# à changer les prévisions rendues aux clients, et MLflow n'a aucune
-# authentification propre. Il n'est donc pas routé par défaut — l'interface se
-# consulte par un tunnel SSH. L'exposer impose de passer par Traefik avec une
-# authentification basique, et le rôle le vérifie avant de déployer.
-applications_mlflow_expose: false
-applications_mlflow_host: "mlflow.enervision.com"
-# Lignes htpasswd `utilisateur:hash`, séparées par des virgules. Générer avec
-#   htpasswd -nbB <utilisateur> '<mot de passe>'
-# et stocker le résultat dans le vault, jamais en clair dans le dépôt.
-applications_mlflow_basic_auth_users: ""
-
-# Origines admises par le registre pour les requêtes d'écriture venant d'un
-# navigateur. MLflow 3 les valide indépendamment de --allowed-hosts : sans
-# cette liste, l'interface se charge et chaque appel /ajax-api répond 403,
-# avec « Blocked cross-origin request » dans son journal. Les origines
-# locales sont toujours admises, le tunnel SSH n'a donc rien à y ajouter —
-# seule la route publique doit être déclarée.
-applications_mlflow_cors_allowed_origins: >-
-  {{ applications_public_scheme }}://{{ applications_mlflow_host }}
-
-# --------------------------------------------------------------------------
 # Serving (dépôt predict, service predict/serving) — inférence en ligne.
-# Processus long derrière Traefik : il résout un alias du registre MLflow,
-# relit les partitions de variables produites par l'ETL, et sert /predict.
+# Processus long derrière Traefik : il résout un alias du registre MLflow
+# (déployé par le rôle `mlflow`), relit les partitions de variables produites
+# par l'ETL, et sert /predict.
 # --------------------------------------------------------------------------
 applications_serving_env: production
 # Alias MLflow du modèle servi. Le déplacer dans le registre suffit à
@@ -583,7 +501,6 @@ applications_collector_backfill_active: >-
 applications_enabled:
   - front
   - api
-  - mlflow
   - serving
   - training
   - collector
@@ -600,6 +517,9 @@ applications_enabled:
 #            son compose et son image comme les autres, mais n'est jamais
 #            démarré par `docker compose up` : un timer systemd le lance, et
 #            il sort quand il a fini.
+#
+# MLflow n'est plus ici : le registre est déployé par le rôle `mlflow`
+# (provision.yml), avec sa propre image construite sur place.
 applications_services_catalog:
   - name: front
     kind: web
@@ -609,15 +529,6 @@ applications_services_catalog:
     kind: web
     image: "{{ applications_image_namespace }}/{{ applications_api_image_name }}:{{ applications_api_sha }}"
     sha: "{{ applications_api_sha }}"
-  # Porté par l'image de training, qui embarque le serveur MLflow. Il n'a donc
-  # ni image ni version propres, d'où shares_image_with — comme predict-cron
-  # sur l'image de l'API. Déclaré avant serving : c'est lui qui résout l'alias
-  # du modèle, autant qu'il trouve le registre déjà debout.
-  - name: mlflow
-    kind: web
-    image: "{{ applications_image_namespace }}/{{ applications_training_image_name }}:{{ applications_training_sha }}"
-    sha: "{{ applications_training_sha }}"
-    shares_image_with: training
   - name: serving
     kind: web
     image: "{{ applications_image_namespace }}/{{ applications_serving_image_name }}:{{ applications_serving_sha }}"

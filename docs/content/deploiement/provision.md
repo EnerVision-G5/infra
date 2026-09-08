@@ -10,10 +10,12 @@ ansible-playbook ansible/playbooks/provision.yml --ask-vault-pass
 
 | Étape | Tag | Détail |
 |---|---|---|
-| **pre_tasks** — créer les réseaux Docker externes | `always` | boucle sur `docker_external_networks` (6 réseaux), `state: present`. Idempotent. Le tag `always` garantit qu'ils existent même avec `--tags <role>`. |
+| **pre_tasks** — créer les réseaux Docker externes | `always` | boucle sur `docker_external_networks` (7 réseaux), `state: present`. Idempotent. Le tag `always` garantit qu'ils existent même avec `--tags <role>`. |
 | rôle `traefik` | `traefik` | `/opt/srv/traefik/` : `compose.yml`, `.env` → `docker compose up` |
 | rôle `garage` | `garage` | `/opt/srv/garage/` : `compose.yml`, `.env`, `garage.toml` → `up` → **bootstrap du layout** (idempotent) |
-| rôle `timescaledb` | `timescaledb`, `database` | `/opt/srv/timescaledb/` : `compose.yml`, `.env` → `up`. Base **vide**. |
+| rôle `postgres` | `postgres`, `database` | `/opt/srv/postgres/` : `compose.yml`, `.env` → `up` (PostgreSQL + pgweb). Base **vide**. |
+| rôle `kafka` | `kafka` | `/opt/srv/kafka/` : `compose.yml`, `.env` → `up` (broker KRaft + `kafka-init` pour les topics + kafka-ui) |
+| rôle `mlflow` | `mlflow` | `/opt/srv/mlflow/` : `Dockerfile`, `compose.yml`, `.env` → `build` + `up`. Refuse une destination d'artefacts `wasbs://` sans chaîne de connexion Azure. |
 | rôle `monitoring` | `monitoring` | `/opt/srv/monitoring/` : compose + configs Prometheus/Loki/Promtail + provisioning Grafana (datasources, dashboards) → `up` |
 
 ## Ce qui n'y est plus
@@ -45,7 +47,8 @@ n'est recréé. Les volumes de données ne sont jamais touchés.
 
 ## Vérifications
 
-Les quatre conteneurs (`traefik`, `garage`, `timescaledb`, la stack
-`monitoring`) doivent être `Up`, le nœud Garage doit apparaître dans
-`garage status` avec une zone et une capacité, et `grafana.enervision.com`
-doit répondre.
+Les conteneurs socle (`traefik`, `garage`, `postgres`, `kafka`, `mlflow`, la
+stack `monitoring`) doivent être `Up`, le nœud Garage doit apparaître dans
+`garage status` avec une zone et une capacité, `kafka-init` doit être sorti en
+`Exited (0)` après avoir créé les topics, et `grafana.enervision.com` doit
+répondre.

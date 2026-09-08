@@ -11,7 +11,11 @@ Tout est épinglé. Deux niveaux : les images **socle** (dans les
 | `traefik` | `v3.7.9` | `traefik` *(en dur dans le template)* |
 | `dxflrs/garage` | `v2.0.0` | `garage` *(en dur)* |
 | `khairul169/garage-webui` | `1.1.0` | `garage` *(en dur)* |
-| `timescale/timescaledb` | `2.17.2-pg16` | `timescaledb` · `timescaledb_image` |
+| `postgres` | `17.10-alpine3.24` | `postgres` · `postgres_image` |
+| `sosedoff/pgweb` | `0.16.2` | `postgres` · `postgres_pgweb_image` |
+| `apache/kafka` | `3.9.2` | `kafka` · `kafka_image` |
+| `ghcr.io/kafbat/kafka-ui` | `v1.5.0` | `kafka` · `kafka_ui_image` |
+| `ghcr.io/mlflow/mlflow` | `v3.1.1` | `mlflow` · `mlflow_base_image` *(FROM du Dockerfile généré + `azure-storage-blob`)* |
 | `grafana/grafana` | `11.4.0` | `monitoring` · `monitoring_grafana_image` |
 | `prom/prometheus` | `v3.1.0` | `monitoring` · `monitoring_prometheus_image` |
 | `grafana/loki` | `3.3.2` | `monitoring` · `monitoring_loki_image` |
@@ -38,8 +42,10 @@ dans le pipeline du dépôt qui publie l'image. On ne déploie **jamais**
 | training | `enervision-g5/predict/training` | `applications_training_sha` | `predict` |
 | etl | `enervision-g5/predict/etl` | `applications_etl_sha` | `predict` |
 | collector | `enervision-g5/predict/collector` | `applications_collector_sha` | `predict` |
-| mlflow | *(= image `training`)* | — | — |
 | predict-cron | *(= image `api`)* | — | — |
+
+MLflow n'est plus une image applicative : le rôle `mlflow` construit son image
+sur place (voir « Images socle » ci-dessus).
 
 Le dépôt `predict` publie `serving`, `training`, `etl` et `collector`
 **depuis le même commit** : elles portent alors le même tag, sur des images
