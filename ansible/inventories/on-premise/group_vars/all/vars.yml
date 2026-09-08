@@ -31,10 +31,11 @@ postgres_user: "enervision"
 monitoring_grafana_host: "grafana.enervision.com"
 monitoring_grafana_admin_user: "admin"
 
-# APPLICATIONS (Front / API / Serving)
+# APPLICATIONS (Front / API / Collector)
+# Le reste de la chaîne (serving, training, etl, predict-cron) a été retiré :
+# elle est en cours de reconstruction autour de Kafka.
 applications_front_host: "app.enervision.com"
 applications_api_host: "api.enervision.com"
-applications_serving_host: "predict.enervision.com"
 
 # --- API : contenu du .env généré (api.env.j2) ----------------------------
 # DATABASE_URL et JWT_SECRET ne sont PAS ici : l'URL est construite par le rôle
@@ -46,67 +47,25 @@ applications_api_auth_enabled: true
 applications_api_jwt_algorithm: "HS256"
 applications_api_access_token_expire_minutes: 60
 
-# --- Commun aux services du dépôt predict ---------------------------------
-# Partagé par etl, serving et training : une seule racine de partitions, sinon
-# l'ETL publierait ailleurs que là où l'entraînement apprend et où le service
-# d'inférence relit.
-applications_predict_storage_root: "s3://enervision-features"
-# Historique de référence, dans son propre seau. Partagé par le collecteur
-# seul : c'est lui qui le charge en base, une fois, à l'installation. Les CSV
-# ne sont plus versionnés avec le code — les déposer sur Garage avant de
-# lancer `python -m collector.datasets`, cf. le README de predict.
-applications_predict_datasets_root: "s3://enervision-datasets"
-# applications_predict_mlflow_tracking_uri n'est pas repris ici : le registre
-# est déployé par le rôle mlflow (conteneur `mlflow` sur ml_network), et le
-# défaut du rôle applications le désigne déjà.
-# Point d'accès interne de Garage (storage_network). Les identifiants
-# viennent du Vault, cf. le rattachement en bas de fichier.
-applications_predict_s3_endpoint_url: "http://garage:3900"
-
-# --- MLflow (rôle `mlflow`, provision.yml) : registre de modèles ----------
-# Image construite sur place (mlflow v3.1.1 + client Azure), backend SQLite
-# dans un volume, interface consultée par tunnel SSH — jamais routée par
-# Traefik (MLflow n'a aucune authentification propre).
-#   ssh -L 5000:127.0.0.1:5000 <hote>  puis http://localhost:5000
-#
-# Artefacts : volume local par défaut. Pour les basculer sur Azure Blob,
-# renseigner l'URI ci-dessous (le conteneur de blob doit exister) et la chaîne
-# de connexion dans le Vault (rattachement en bas de fichier) :
+# --- MLflow (rôle `mlflow`, provision.yml) -------------------------------
+# Image construite sur place (mlflow v3.1.1 + client Azure), backend SQLite,
+# interface par tunnel SSH — jamais routée par Traefik. Artefacts : volume
+# local par défaut ; pour Azure Blob, renseigner l'URI et la chaîne de
+# connexion dans le Vault (rattachement en bas de fichier) :
 #   mlflow_artifacts_destination: "wasbs://<conteneur>@<compte>.blob.core.windows.net"
 
-# --- Serving (image predict/serving) : contenu du .env (serving.env.j2) ----
-applications_serving_env: "production"
-applications_serving_model_uri: "models:/enervision_xgboost@champion"
+# --- Collector (dépôt `collector`) : poller Kafka -----------------------
+# Le code est hardcodé (kafka:9092, http://mock-api:8000, topic, sites, 60 s) :
+# le rôle lance l'image telle quelle sur broker_network. `mock-api` doit y être
+# résoluble — voir applications_collector_networks (défaut du rôle).
 
-# --- Training (image predict/training) : .env + timer systemd -------------
-applications_training_env: "production"
-applications_training_experiment: "enervision-consumption"
-applications_training_history_days: 90
-# Le timer n'apprend pas et ne promeut pas dans le même geste : la mise en
-# service d'une version se décide après lecture de ses métriques, par
-# `docker compose --profile jobs run --rm training --promote-version <n>`.
-applications_training_promote: false
-applications_training_on_calendar: "Sun *-*-* 03:30:00"
-
-# --- Collector (poller + rattrapage) : contenu du .env généré (collector.env.j2)
-# DATABASE_URL est construite par le rôle (dialecte psycopg).
-applications_collector_env: "production"
-# URL de l'API Mock IoT source des mesures — À RENSEIGNER.
-applications_collector_mock_api_url: "http://10.105.200.45:8000"
-applications_collector_backfill_enabled: true
-applications_collector_backfill_on_calendar: "*-*-* 02:30:00"
-applications_collector_backfill_days: 2
-
-# Applications deployees. MLflow n'y est plus : il est déployé par le rôle
-# `mlflow` (provision.yml), pas par le rôle applications.
+# Applications déployées. MLflow est déployé par le rôle `mlflow`
+# (provision.yml), pas ici. `collector` est prêt côté rôle (catalogue +
+# templates) : l'ajouter ici une fois applications_collector_sha renseigné,
+# après le premier run du workflow cd.yml du dépôt `collector`.
 applications_enabled:
   - front
   - api
-  - serving
-  - training
-  - collector
-  - etl
-  - predict-cron
 
 # Version déployée de chaque image : tag GHCR immuable d'un commit précis
 # (sha-<git-sha>), lu dans le résumé du run CD ou la page Packages du dépôt
@@ -114,13 +73,9 @@ applications_enabled:
 # production. Procédure complète dans le README, « Mettre en production ».
 applications_front_sha: "sha-eb29a117dae590a8d0bbc9030f19ed2c2dae3246"
 applications_api_sha: "sha-665d1e5a553e7cecbf4e19e5f9d01228fdf061a3"
-# serving, training et etl sont publiés depuis le dépôt predict : un même
-# commit leur donne le même tag, sur trois images distinctes. C'est le couple
-# image:tag qui identifie une version, et le rôle contrôle son unicité là.
-applications_serving_sha: "sha-48709c643fd223e9e23326754c9609409e685189"
-applications_training_sha: "sha-da9407f5ad00560406ea4fc46d7a3d398610c452"
-applications_etl_sha: "sha-da9407f5ad00560406ea4fc46d7a3d398610c452"
-applications_collector_sha: "sha-48709c643fd223e9e23326754c9609409e685189"
+# À renseigner après le premier run du workflow cd.yml du dépôt `collector`,
+# puis ajouter `collector` à applications_enabled ci-dessus.
+applications_collector_sha: ""
 
 # DOCKER
 docker_external_networks:
@@ -146,13 +101,6 @@ ghcr_token: "{{ vault_ghcr_token }}"
 
 monitoring_grafana_admin_password: "{{ vault_monitoring_grafana_admin_password }}"
 
-# Clé S3 lue par serving et training pour atteindre Garage. Produite par
-# `garage key create`, jamais choisie à la main. Le `default('')` laisse le
-# rôle nommer précisément ce qui manque tant que le Vault ne la porte pas,
-# plutôt que d'échouer sur une variable indéfinie.
-applications_predict_s3_access_key_id: "{{ vault_garage_s3_access_key_id | default('') }}"
-applications_predict_s3_secret_access_key: "{{ vault_garage_s3_secret_access_key | default('') }}"
-
 # Chaîne de connexion du compte de stockage Azure Blob où MLflow dépose ses
 # artefacts. Lue seulement quand mlflow_artifacts_destination est une URI
 # wasbs:// ; le rôle mlflow refuse alors de déployer sans elle. Le `default('')`
@@ -166,10 +114,6 @@ mlflow_azure_connection_string: "{{ vault_mlflow_azure_connection_string | defau
 #   python -c "import secrets; print(secrets.token_urlsafe(48))"
 applications_api_jwt_secret: "{{ vault_applications_api_secret_key }}"
 
-# Clé de service du moteur d'inférence, exigée sur les routes de son contrat.
-# Une seule valeur pour trois consommateurs : le service la vérifie, l'API
-# métier et le job de rafraîchissement la présentent en en-tête X-API-Key.
-# Le rôle refuse de déployer si elle manque, ou si les deux côtés divergent.
-#
-#   python -c "import secrets; print(secrets.token_urlsafe(48))"
-applications_serving_api_key: "{{ vault_serving_api_key | default('') }}"
+# vault_garage_s3_* et vault_serving_api_key restent dans le vault mais n'ont
+# plus de consommateur (serving / training / etl retirés) : ils reviendront
+# quand la nouvelle chaîne ML les redemandera.

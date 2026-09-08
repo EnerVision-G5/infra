@@ -42,21 +42,12 @@ Le déploiement échoue si :
 - `applications_api_jwt_secret` est absente ou fait < 32 caractères ;
 - `applications_api_cors_allowed_origins` est vide ou contient `*`.
 
-## predict-cron — même image
-
-Job de rafraîchissement des prédictions (`kind: worker`), porté par la même
-image `api`.
-
-| | |
-|---|---|
-| Conteneur | `enervision-predict-cron` |
-| Réseaux | `db_network`, `ml_network` |
-| Boucle | `python -m app.jobs.predict_refresh` toutes les `applications_predict_cron_period_seconds` (3600 s) |
-
-`.env` (`predict-cron.env.j2`) : `ENVIRONMENT`, `DATABASE_URL` (asyncpg — c'est
-l'API qui écrit la table `prediction`), `PREDICT_URL`
-(`http://enervision-serving:8000`), `PREDICT_HORIZON_HOURS`,
-`PREDICT_TIMEOUT_SECONDS`. Ni `JWT_SECRET` ni CORS : le job n'expose rien.
+!!! note "Intégration au moteur d'inférence retirée"
+    L'API était cliente du service `serving` (routes de synchronisation et de
+    simulation de pic) et le job `predict-cron` rafraîchissait la table
+    `prediction`. `serving` et `predict-cron` ont été retirés le temps que la
+    chaîne ML soit reconstruite autour de Kafka — les variables `PREDICT_*`
+    reviendront dans `api.env.j2` à ce moment-là.
 
 ## Dépannage
 

@@ -4,13 +4,16 @@
 
 | Réseau | Services attachés |
 |---|---|
-| `proxy_network` | traefik, front, api, serving, grafana, garage, garage-webui |
-| `db_network` | postgres, pgweb, api, collector, etl, predict-cron, training |
-| `ml_network` | api, serving, mlflow, training, predict-cron |
-| `storage_network` | garage, serving, etl, training |
-| `broker_network` | kafka, kafka-init, kafka-ui |
+| `proxy_network` | traefik, front, api, grafana, garage, garage-webui |
+| `db_network` | postgres, pgweb, api |
+| `broker_network` | kafka, kafka-init, kafka-ui, collector |
+| `ml_network` | mlflow |
+| `storage_network` | garage |
 | `monitoring_network` | prometheus, grafana, loki, promtail, node-exporter, cadvisor, traefik |
 | `api_network` | *(créé, non utilisé)* |
+
+`ml_network` et `storage_network` restent créés : ils re-serviront à la chaîne
+ML reconstruite.
 
 ## Ports publiés sur l'hôte
 
@@ -32,7 +35,6 @@ Tout le reste est **interne aux réseaux Docker** — pas de port publié.
 |---|---|
 | front | 8080 |
 | api | 8080 |
-| serving | 8000 |
 | grafana | 3000 |
 | garage — S3 | 3900 |
 | garage — web | 3902 |

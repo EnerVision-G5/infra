@@ -97,34 +97,23 @@ et ne le dit qu'en DEBUG — une supervision muette qui a l'air en place.
 
 ## Reprise automatique
 
-Les traitements datés (`training`, `drift`, `collector-backfill`,
-`etl-backfill`) rejouent **une seule fois** après un échec, un quart d'heure
-plus tard (`Restart=on-failure`, `RestartSec`, `StartLimitBurst=2`). Un job
-tué à son plafond mémoire échouerait de la même façon en repartant aussitôt ;
-un quart d'heure plus tard, la machine peut avoir rendu ce qui manquait.
-Au-delà, l'unité reste en échec — et l'alerte « traitement daté en échec » le
-dit.
+Les services longs sont en `restart: unless-stopped` : un kill par le cgroup
+les fait repartir seuls. (Les traitements datés `training` / `drift` /
+`*-backfill` reviendront avec la chaîne ML reconstruite ; leur reprise
+systemd — un seul rejeu après échec, `RestartPreventExitStatus=2` pour `drift`
+— sera redocumentée à ce moment-là.)
 
-!!! warning "`drift` ne rejoue jamais sur le code 2"
-    `RestartPreventExitStatus=2` : le code 2 est un **verdict** — dérive
-    constatée — pas une panne. Le rejouer ne changerait rien à ce qu'il a
-    mesuré, et masquerait ce qu'il annonce.
-
-Les services longs, eux, sont en `restart: unless-stopped` : un kill par le
-cgroup les fait repartir seuls.
-
-Enfin, chaque conteneur porte un `oom_score_adj` qui décide **qui meurt en
-premier** si la VM manque de mémoire, plutôt que de laisser le noyau choisir
-au score — c'est-à-dire souvent le plus gros, donc la base :
+Chaque conteneur porte un `oom_score_adj` qui décide **qui meurt en premier**
+si la VM manque de mémoire, plutôt que de laisser le noyau choisir au score
+— c'est-à-dire souvent le plus gros, donc la base :
 
 | `oom_score_adj` | Conteneurs |
 |---|---|
 | −500 | `postgres`, `traefik` |
 | −300 | `kafka` |
-| −200 | `enervision-api`, `enervision-serving` |
+| −200 | `enervision-api` |
 | +300 | `mlflow` |
-| +500 | `front`, `collector-poller`, `etl`, `predict-cron` |
-| +800 | `training`, `drift` |
+| +500 | `front`, `enervision-collector` |
 
 ## Points d'attention
 

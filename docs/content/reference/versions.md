@@ -38,19 +38,14 @@ dans le pipeline du dépôt qui publie l'image. On ne déploie **jamais**
 |---|---|---|---|
 | front | `enervision-g5/dashboard` | `applications_front_sha` | `dashboard` |
 | api | `enervision-g5/api` | `applications_api_sha` | `api` |
-| serving | `enervision-g5/predict/serving` | `applications_serving_sha` | `predict` |
-| training | `enervision-g5/predict/training` | `applications_training_sha` | `predict` |
-| etl | `enervision-g5/predict/etl` | `applications_etl_sha` | `predict` |
-| collector | `enervision-g5/predict/collector` | `applications_collector_sha` | `predict` |
-| predict-cron | *(= image `api`)* | — | — |
+| collector | `enervision-g5/collector` | `applications_collector_sha` | `collector` |
+
+Chaque dépôt a un workflow `cd.yml` qui publie une image sous `sha-<git-sha>`.
+Le rôle contrôle l'unicité du couple `image:tag`.
 
 MLflow n'est plus une image applicative : le rôle `mlflow` construit son image
-sur place (voir « Images socle » ci-dessus).
-
-Le dépôt `predict` publie `serving`, `training`, `etl` et `collector`
-**depuis le même commit** : elles portent alors le même tag, sur des images
-distinctes. Le rôle contrôle l'unicité du couple `image:tag`, pas du SHA
-seul.
+sur place (voir « Images socle » ci-dessus). `serving`, `training`, `etl` et
+`predict-cron` ont été retirés — chaîne ML en reconstruction autour de Kafka.
 
 ## Changer une version
 

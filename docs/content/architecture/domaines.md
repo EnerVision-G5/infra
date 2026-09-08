@@ -11,7 +11,6 @@ correspondre.
 |---|---|---|---|---|---|
 | `app.enervision.com` | dashboard | `enervision-front` | 8080 | `web` | — |
 | `api.enervision.com` | API métier | `enervision-api` | 8080 | `web` | JWT |
-| `predict.enervision.com` | service d'inférence | `enervision-serving` | 8000 | `web` | — *(appelé par l'API)* |
 | `grafana.enervision.com` | Grafana | `grafana` | 3000 | `web` | login Grafana |
 | `s3.enervision.com` + `*.s3.enervision.com` | Garage — API S3 | `garage` | 3900 | `web` | clés S3 |
 | `web.enervision.com` + `*.web.enervision.com` | Garage — hébergement statique | `garage` | 3902 | `web` | selon bucket |
@@ -20,6 +19,9 @@ correspondre.
 
 MLflow (`mlflow:5000`), pgweb (`pgweb:8081`) et kafka-ui (`kafka-ui:8080`) ne
 sont **pas routés** : consultés par tunnel SSH sur la boucle locale de l'hôte.
+Le `collector` et le broker Kafka sont internes à `broker_network`, sans route.
+`predict.enervision.com` (service d'inférence) reviendra avec la chaîne ML
+reconstruite.
 
 Les wildcards `*.s3.` et `*.web.` viennent du fonctionnement de Garage :
 `<bucket>.web.enervision.com` sert le bucket `<bucket>`. Voir
@@ -62,7 +64,6 @@ plus deux wildcards :
 ```
 app        A   <ip-vm>
 api        A   <ip-vm>
-predict    A   <ip-vm>
 grafana    A   <ip-vm>
 garage     A   <ip-vm>
 traefik    A   <ip-vm>

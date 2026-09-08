@@ -5,13 +5,14 @@ Deux playbooks, joués dans cet ordre :
 | Playbook | Cible | Ce qu'il fait |
 |---|---|---|
 | `provision.yml` | `all` | réseaux Docker partagés → Traefik → Garage → PostgreSQL → Kafka → MLflow → monitoring |
-| `deploy.yml` | `application_servers` | rôle `applications` : front, api, et la chaîne predict |
+| `deploy.yml` | `application_servers` | rôle `applications` : front, api, collector |
 
 ## Pourquoi cet ordre
 
-`deploy.yml` suppose que les réseaux, Traefik, Garage, PostgreSQL et MLflow
-existent déjà : l'API se raccroche à `proxy_network` et `db_network`, `serving`
-résout un alias dans MLflow et lit Garage, etc. `provision.yml` d'abord, donc.
+`deploy.yml` suppose que les réseaux Docker, Traefik, PostgreSQL et Kafka
+existent déjà : l'API se raccroche à `proxy_network` / `db_network`, le
+`collector` pousse dans `kafka` sur `broker_network`. `provision.yml` d'abord,
+donc.
 
 La base est déployée **vide** par `provision.yml`. C'est l'entrypoint du
 conteneur `api` (dans `deploy.yml`) qui applique le schéma via

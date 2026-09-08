@@ -75,37 +75,24 @@ Les rôles portent chacun leurs propres défauts dans `defaults/main.yml` ;
 |---|---|
 | `applications_front_host` | `app.enervision.com` |
 | `applications_api_host` | `api.enervision.com` |
-| `applications_serving_host` | `predict.enervision.com` |
 | `applications_api_environment` | `production` |
 | `applications_api_auth_enabled` | `true` |
 | `applications_api_jwt_algorithm` | `HS256` |
 | `applications_api_access_token_expire_minutes` | `60` |
-| `applications_predict_storage_root` | `s3://enervision-features` |
-| `applications_predict_s3_endpoint_url` | `http://garage:3900` |
-| `applications_serving_model_uri` | `models:/enervision_xgboost@champion` |
-| `applications_training_experiment` | `enervision-consumption` |
-| `applications_training_history_days` | `90` |
-| `applications_training_promote` | `false` |
-| `applications_training_on_calendar` | `Sun *-*-* 03:30:00` |
-| `applications_collector_env` | `production` |
-| `applications_collector_mock_api_url` | `http://10.105.200.45:8000` *(à vérifier)* |
-| `applications_collector_backfill_on_calendar` | `*-*-* 02:30:00` |
-| `applications_collector_backfill_days` | `2` |
+| `applications_collector_networks` *(défaut rôle)* | `[broker_network]` |
 
 ## Applications — versions déployées
 
 | Variable | Image | Tag |
 |---|---|---|
-| `applications_front_sha` | `ghcr.io/enervision-g5/dashboard` | `sha-dadeb47…` |
-| `applications_api_sha` | `ghcr.io/enervision-g5/api` | `sha-665d1e5…` |
-| `applications_serving_sha` | `ghcr.io/enervision-g5/predict/serving` | `sha-48709c6…` |
-| `applications_training_sha` | `ghcr.io/enervision-g5/predict/training` | `sha-da9407f…` |
-| `applications_etl_sha` | `ghcr.io/enervision-g5/predict/etl` | `sha-da9407f…` |
-| `applications_collector_sha` | `ghcr.io/enervision-g5/predict/collector` | `sha-48709c6…` |
+| `applications_front_sha` | `ghcr.io/enervision-g5/dashboard` | `sha-…` |
+| `applications_api_sha` | `ghcr.io/enervision-g5/api` | `sha-…` |
+| `applications_collector_sha` | `ghcr.io/enervision-g5/collector` | `sha-…` |
 
-`predict-cron` réutilise l'image `api`. MLflow n'est plus une application : il
-est déployé par le rôle `mlflow` (`provision.yml`), avec sa propre image
-construite sur place. Voir [Services › MLflow](../services/mlflow.md).
+MLflow n'est plus une application : il est déployé par le rôle `mlflow`
+(`provision.yml`), avec sa propre image construite sur place. Voir
+[Services › MLflow](../services/mlflow.md). `serving`, `training`, `etl` et
+`predict-cron` ont été retirés (chaîne ML en reconstruction autour de Kafka).
 
 ## `applications_enabled`
 
@@ -113,11 +100,7 @@ construite sur place. Voir [Services › MLflow](../services/mlflow.md).
 applications_enabled:
   - front
   - api
-  - serving
-  - training
-  - collector
-  - etl
-  - predict-cron
+  # - collector   # dès que applications_collector_sha est renseigné
 ```
 
 ## Réseaux
@@ -145,7 +128,5 @@ docker_external_networks:
 | `ghcr_token` | `vault_ghcr_token` | applications (login GHCR) |
 | `monitoring_grafana_admin_password` | `vault_monitoring_grafana_admin_password` | monitoring |
 | `applications_api_jwt_secret` | `vault_applications_api_secret_key` | api (`JWT_SECRET`) |
-| `applications_predict_s3_access_key_id` | `vault_garage_s3_access_key_id` | serving, training, etl |
-| `applications_predict_s3_secret_access_key` | `vault_garage_s3_secret_access_key` | serving, training, etl |
 | `mlflow_azure_connection_string` | `vault_mlflow_azure_connection_string` | mlflow (si artefacts `wasbs://`) |
 | `ansible_password` | `vault_ansible_ssh_password` | connexion SSH (`hosts.yml`) |

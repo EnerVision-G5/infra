@@ -67,7 +67,6 @@ durcissement système déjà fait. Les rôles Ansible qui faisaient ce travail
 | `/opt/srv/mlflow/` | `Dockerfile` + compose + `.env` |
 | `/opt/srv/monitoring/` | compose + `.env` + configs Prometheus/Loki/Promtail/Grafana |
 | `/opt/srv/applications/<name>/` | un dossier par application : `compose.yml`, `.env`, `.sha` |
-| `/etc/systemd/system/` | timers `collector-backfill.*` et `training.*` |
 
 Tous ces fichiers sont **générés** — la source est dans `ansible/roles/`.
 

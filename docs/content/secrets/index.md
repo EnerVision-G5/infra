@@ -20,7 +20,7 @@ et [`check-secrets.sh`](verification.md) le vérifie en CI.
 | Variable métier | Clé Vault | Consommée par |
 |---|---|---|
 | `ansible_password` | `vault_ansible_ssh_password` | connexion SSH (`hosts.yml`) |
-| `postgres_password` | `vault_postgres_password` | postgres, api, collector, etl, training, predict-cron |
+| `postgres_password` | `vault_postgres_password` | postgres, api |
 | `ghcr_username` | `vault_ghcr_username` | rôle `applications` — `docker login ghcr.io` |
 | `ghcr_token` | `vault_ghcr_token` | idem (PAT `read:packages`) |
 | `garage_rpc_secret` | `vault_garage_rpc_secret` | garage (`garage.toml`, `.env`) |
@@ -28,8 +28,7 @@ et [`check-secrets.sh`](verification.md) le vérifie en CI.
 | `garage_metrics_token` | `vault_garage_metrics_token` | garage (endpoint métriques) |
 | `monitoring_grafana_admin_password` | `vault_monitoring_grafana_admin_password` | grafana |
 | `applications_api_jwt_secret` | `vault_applications_api_secret_key` | api — `JWT_SECRET` (≥ 32 caractères) |
-| `applications_predict_s3_access_key_id` | `vault_garage_s3_access_key_id` | serving, training, etl |
-| `applications_predict_s3_secret_access_key` | `vault_garage_s3_secret_access_key` | serving, training, etl |
+| `vault_garage_s3_access_key_id` / `_secret_access_key` | *(dans le vault)* | plus de consommateur — serving / training / etl retirés ; reviendront avec la nouvelle chaîne ML |
 | `mlflow_azure_connection_string` | `vault_mlflow_azure_connection_string` | mlflow — seulement si artefacts sur Azure Blob (`wasbs://`) |
 
 !!! note "Nom de clé historique"

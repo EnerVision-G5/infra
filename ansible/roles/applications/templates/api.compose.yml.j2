@@ -16,7 +16,6 @@ services:
     networks:
       - proxy_network
       - db_network
-      - ml_network
 
     healthcheck:
       test:
@@ -56,7 +55,3 @@ networks:
   db_network:
     external: true
     name: db_network
-
-  ml_network:
-    external: true
-    name: ml_network

@@ -24,7 +24,7 @@ fichier déployé porte l'en-tête « *ne pas éditer sur l'hôte* ».
 | **Kafka** | `provision.yml` | broker Kafka KRaft mono-nœud + topics + kafka-ui |
 | **MLflow** | `provision.yml` | registre de modèles (image construite sur place) |
 | **Monitoring** | `provision.yml` | Prometheus, Grafana, Loki + Promtail, node-exporter, cAdvisor |
-| **Applications** | `deploy.yml` | front, api, serving, training, collector, etl, predict-cron |
+| **Applications** | `deploy.yml` | front, api, collector *(chaîne de prédiction en reconstruction autour de Kafka)* |
 
 Détail service par service : [Services](../services/index.md).
 
@@ -45,7 +45,6 @@ flowchart TB
             T
             F[front]
             A[api]
-            S[serving]
             GW[Garage s3/web]
             GUI[garage-webui]
             GR[Grafana]
@@ -53,26 +52,18 @@ flowchart TB
 
         subgraph db[db_network]
             A --- DB[(PostgreSQL)]
-            C[collector] --- DB
-            E[etl] --- DB
-            PC[predict-cron] --- DB
-        end
-
-        subgraph ml[ml_network]
-            A --- S
-            S --- MLF[MLflow]
-            PC --- S
-            TRN[training] --- MLF
         end
 
         subgraph broker[broker_network]
-            K[(Kafka)]
+            C[collector] --> K[(Kafka)]
+        end
+
+        subgraph ml[ml_network]
+            MLF[MLflow]
         end
 
         subgraph storage[storage_network]
-            S --- GA[(Garage S3)]
-            E --- GA
-            TRN --- GA
+            GA[(Garage S3)]
         end
 
         subgraph mon[monitoring_network]
@@ -95,7 +86,7 @@ flowchart TB
 | Créer les réseaux Docker partagés | Installer Docker |
 | Déployer et configurer les stacks | Configurer `/etc/docker/daemon.json` (GPU + snapshotter, géré à la main — voir [L'hôte](hote.md)) |
 | Générer les `.env` depuis le Vault | Gérer les paquets système, SSH, le pare-feu |
-| Bootstrapper le layout Garage ; construire l'image MLflow sur l'hôte | Construire les images applicatives (dépôts `dashboard` / `api` / `predict`) |
+| Bootstrapper le layout Garage ; construire l'image MLflow sur l'hôte | Construire les images applicatives (dépôts `dashboard`, `api`, `collector`, …) |
 
 ## Suite
 

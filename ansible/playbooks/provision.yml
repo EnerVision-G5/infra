@@ -8,20 +8,16 @@
   # retiré. Il ne reste de lui que la création des réseaux Docker partagés,
   # portée ici en pre_tasks pour qu'ils existent avant que les stacks des
   # rôles suivants ne s'y raccrochent.
-  # pre_tasks:
-  #   - name: Créer les réseaux Docker externes partagés par les stacks
-  #     community.docker.docker_network:
-  #       name: "{{ item }}"
-  #       state: present
-  #     loop: "{{ docker_external_networks }}"
-  #     tags:
-  #       - always
+  pre_tasks:
+    - name: Créer les réseaux Docker externes partagés par les stacks
+      community.docker.docker_network:
+        name: "{{ item }}"
+        state: present
+      loop: "{{ docker_external_networks }}"
+      tags:
+        - always
 
   roles:
-    - role: docker_engine
-      tags:
-        - docker
-
     - role: traefik
       tags:
         - traefik
@@ -35,8 +31,8 @@
       tags:
         - kafka
 
-    # Après garage : le registre partage la même chaîne ML, et son stockage
-    # d'artefacts (Azure Blob ou volume local) doit être joignable au démarrage.
+    # Registre de modèles. Artefacts sur volume local par défaut, ou Azure Blob
+    # (wasbs://) — voir le rôle et group_vars.
     - role: mlflow
       tags:
         - mlflow

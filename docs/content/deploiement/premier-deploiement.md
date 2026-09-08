@@ -65,6 +65,12 @@ en `Exited (0)`.
 
 ## 7 — Seaux + clé Garage
 
+!!! warning "Étapes 7, 7 bis, 10 bis et 11 — chaîne ML en pause"
+    Elles concernent l'ancienne chaîne `predict/*` (features sur Garage,
+    entraînement, modèle servi), retirée du rôle `applications` le temps de la
+    reconstruction autour de Kafka. Les sauter pour un premier déploiement
+    front + api + collector ; elles seront réécrites avec la nouvelle chaîne.
+
 DEUX seaux, et non un seul. `enervision-features` porte les partitions de
 variables, que l'ETL réécrit à chaque run ; `enervision-datasets` porte
 l'historique de référence, figé et irremplaçable. Les séparer est ce qui
@@ -166,7 +172,7 @@ docker ps --filter name=enervision- --format '{{.Names}}\t{{.Status}}'
 | `http://api.enervision.com/docs` | 200 (l'API a démarré, migrations appliquées) |
 | `http://app.enervision.com/` | le dashboard, sans erreur de configuration |
 | `http://app.enervision.com/config.js` | contient `API_BASE_URL` et `CSP_CONNECT_SRC` |
-| `http://predict.enervision.com/health` | 200 (peut être `503` si aucun modèle promu — normal au début) |
+| `docker logs enervision-collector` | mesures poussées dans Kafka (aussi visibles dans kafka-ui) |
 | `http://grafana.enervision.com/` | login Grafana ; dashboard cAdvisor **rempli** |
 | `http://garage.enervision.com/` | interface Garage |
 

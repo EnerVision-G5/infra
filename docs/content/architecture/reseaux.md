@@ -19,13 +19,17 @@ il s'y attache.
 
 | Réseau | Rôle | Qui s'y attache |
 |---|---|---|
-| `proxy_network` | exposition via Traefik | traefik, front, api, serving, grafana, garage, garage-webui |
-| `db_network` | accès à PostgreSQL | postgres, pgweb, api, collector, etl, predict-cron, training |
-| `ml_network` | registre MLflow + appels `api ↔ serving` | api, serving, mlflow, training, predict-cron |
-| `storage_network` | stockage objet Garage (S3) | garage, serving, etl, training |
-| `broker_network` | bus Kafka | kafka, kafka-init, kafka-ui |
+| `proxy_network` | exposition via Traefik | traefik, front, api, grafana, garage, garage-webui |
+| `db_network` | accès à PostgreSQL | postgres, pgweb, api |
+| `broker_network` | bus Kafka | kafka, kafka-init, kafka-ui, collector |
+| `ml_network` | registre MLflow | mlflow |
+| `storage_network` | stockage objet Garage (S3) | garage |
 | `monitoring_network` | collecte des métriques | prometheus, grafana, loki, promtail, node-exporter, cadvisor, traefik |
-| `api_network` | *(réservé)* | — actuellement créé mais aucun service ne l'utilise |
+| `api_network` | *(réservé)* | — créé mais aucun service ne l'utilise |
+
+`ml_network` et `storage_network` sont quasi vides pour l'instant : la chaîne
+de prédiction (serving / training / etl) qui les peuplait est en cours de
+reconstruction autour de Kafka.
 
 ## Schéma
 
@@ -35,32 +39,23 @@ flowchart LR
         TR(traefik)
         FR[front]
         AP[api]
-        SV[serving]
         GRA[grafana]
         GAR[garage]
     end
     subgraph db_network
         DB[(postgres)]
         AP2[api]
-        CO[collector]
-        ET[etl]
-        PC[predict-cron]
-    end
-    subgraph ml_network
-        AP3[api]
-        SV2[serving]
-        MLF[mlflow]
-        TRN[training]
-    end
-    subgraph storage_network
-        GAR2[garage]
-        SV3[serving]
-        ET2[etl]
-        TRN2[training]
     end
     subgraph broker_network
         KFK[kafka]
         KUI[kafka-ui]
+        CO[collector]
+    end
+    subgraph ml_network
+        MLF[mlflow]
+    end
+    subgraph storage_network
+        GAR2[garage]
     end
     subgraph monitoring_network
         PROM[prometheus]
@@ -85,11 +80,10 @@ le réseau partagé :
 
 | Alias inter-projets | Conteneur |
 |---|---|
-| `enervision-serving:8000` | service d'inférence |
-| `mlflow:5000` | registre MLflow (rôle `mlflow`) |
 | `postgres:5432` | base |
-| `garage:3900` | endpoint S3 |
 | `kafka:9092` | broker Kafka |
+| `mlflow:5000` | registre MLflow (rôle `mlflow`) |
+| `garage:3900` | endpoint S3 |
 
 ## Dépendances entre conteneurs
 
@@ -98,15 +92,11 @@ diagnostiquer un service qui démarre mais ne sert pas.
 
 | Conteneur | Doit joindre | Réseau |
 |---|---|---|
-| `enervision-api` | `postgres:5432`, `enervision-serving:8000` | `db_network`, `ml_network` |
+| `enervision-api` | `postgres:5432` | `db_network` |
 | `enervision-front` | *(rien en interne — le navigateur appelle l'API directement)* | `proxy_network` |
-| `enervision-serving` | `mlflow:5000`, `garage:3900` | `ml_network`, `storage_network` |
-| `mlflow` | Azure Blob (`*.blob.core.windows.net`, HTTPS sortant) *(si artefacts `wasbs://`)* | `ml_network` |
-| `enervision-collector-poller` | `postgres:5432`, l'API Mock IoT (`MOCK_API_URL`) | `db_network` |
-| `enervision-etl` | `postgres:5432`, `garage:3900` | `db_network`, `storage_network` |
-| `enervision-predict-cron` | `postgres:5432`, `enervision-serving:8000` | `db_network`, `ml_network` |
-| `training` *(job)* | `postgres:5432`, `mlflow:5000`, `garage:3900` | `db_network`, `ml_network`, `storage_network` |
+| `enervision-collector` | `kafka:9092`, `mock-api:8000` | `broker_network` |
 | `kafka-init` | `kafka:9092` | `broker_network` |
+| `mlflow` | Azure Blob (`*.blob.core.windows.net`, HTTPS sortant) *(si artefacts `wasbs://`)* | `ml_network` |
 | `traefik` | le socket Docker (`/var/run/docker.sock`) + tous les conteneurs routés sur `proxy_network` | `proxy_network`, `monitoring_network` |
 | `prometheus` | `node-exporter:9100`, `cadvisor:8080`, `traefik:8082` | `monitoring_network` |
 | `promtail` | le socket Docker, `loki:3100` | `monitoring_network` |

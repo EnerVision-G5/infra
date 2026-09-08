@@ -1,16 +1,21 @@
 # Applications
 
-Le rôle `applications` (`deploy.yml`) déploie sept services : le dashboard,
-l'API, et la chaîne de prédiction (serving, training, collector, etl,
-predict-cron). Le registre **MLflow** est déployé à part, par le rôle `mlflow`
-(`provision.yml`) — voir [Services › MLflow](../mlflow.md).
+Le rôle `applications` (`deploy.yml`) déploie **trois** services : le dashboard,
+l'API métier, et le `collector` (poller Kafka).
+
+!!! note "Chaîne ML en reconstruction"
+    `serving`, `training`, `etl`, `predict-cron` et l'ancien `collector`
+    (predict) ont été retirés du rôle : la chaîne de prédiction est en cours de
+    reconstruction autour de Kafka (dépôts `collector`, `ingester`,
+    `raw-archiver`, …). Le registre **MLflow** a son propre rôle
+    (`provision.yml`) — voir [Services › MLflow](../mlflow.md).
 
 | | |
 |---|---|
 | Rôle Ansible | `applications` (`deploy.yml`, `hosts: application_servers`) |
 | Dossier hôte | `/opt/srv/applications/<name>/` — un par service |
 | Projet Compose | `enervision-<name>` |
-| Conteneur | `enervision-<name>` (sauf `collector` → `enervision-collector-poller`) |
+| Conteneur | `enervision-<name>` |
 
 ## Catalogue et activation
 
@@ -19,7 +24,7 @@ connus. `applications_enabled` (`vars.yml`) filtre ceux réellement déployés :
 
 ```yaml
 applications_enabled:
-  [front, api, serving, training, collector, etl, predict-cron]
+  [front, api]        # collector ajouté dès que applications_collector_sha est renseigné
 ```
 
 Un service absent de cette liste n'est **ni configuré, ni tiré, ni démarré**.
@@ -28,56 +33,48 @@ Un service absent de cette liste n'est **ni configuré, ni tiré, ni démarré**
 
 | `kind` | Signification | Services |
 |---|---|---|
-| `web` | service HTTP exposé derrière Traefik | front, api, serving |
-| `worker` | processus long, sans port ni route | collector, etl, predict-cron |
-| `job` | traitement daté, **jamais** démarré par `docker compose up` — un timer systemd le lance | training |
+| `web` | service HTTP exposé derrière Traefik | front, api |
+| `worker` | processus long, sans port ni route | collector |
 
 ## Images et versions
 
-| Service | Image GHCR | SHA |
-|---|---|---|
-| front | `dashboard` | `applications_front_sha` |
-| api | `api` | `applications_api_sha` |
-| serving | `predict/serving` | `applications_serving_sha` |
-| training | `predict/training` | `applications_training_sha` |
-| etl | `predict/etl` | `applications_etl_sha` |
-| collector | `predict/collector` | `applications_collector_sha` |
-| **predict-cron** | *= image `api`* | `shares_image_with: api` |
+| Service | Dépôt | Image GHCR | SHA |
+|---|---|---|---|
+| front | `dashboard` | `dashboard` | `applications_front_sha` |
+| api | `api` | `api` | `applications_api_sha` |
+| collector | `collector` | `collector` | `applications_collector_sha` |
 
-`predict-cron` n'a ni image ni version propres : il **emprunte** celle de
-l'`api` et est exclu du contrôle d'unicité `image:tag`.
-
-Le dépôt `predict` publie `serving`, `training`, `etl`, `collector` **depuis
-le même commit** → même tag, images distinctes. Le rôle vérifie l'unicité du
-couple `image:tag`, jamais du SHA seul.
+Chaque image a sa propre version ; le rôle vérifie l'unicité du couple
+`image:tag`. Le tag est le `sha-<git-sha>` produit par le workflow `cd.yml` du
+dépôt, reporté par PR dans `group_vars` — cf. le README, « Mettre en
+production ».
 
 ## Ce que fait le rôle, dans l'ordre
 
 ```mermaid
 flowchart TD
-    A[Asserts : JWT_SECRET, CORS, CSP,<br/>clés S3, ≥ 1 service, SHA présents,<br/>image:tag unique] --> B[Créer /opt/srv/applications/&lt;name&gt;/]
+    A[Asserts : JWT_SECRET, CORS, CSP,<br/>≥ 1 service, SHA présents, image:tag unique] --> B[Créer /opt/srv/applications/&lt;name&gt;/]
     B --> C[Créer les réseaux Docker]
     C --> D[docker login GHCR]
     D --> E[Générer .env par service]
     E --> F[Générer compose.yml par service]
     F --> G[Écrire .sha → détecte les versions changées]
     G --> H[docker pull des images changées]
-    H --> I[docker compose up — sauf kind: job]
-    I --> J[Timers systemd :<br/>collector-backfill, training]
+    H --> I[docker compose up]
 ```
 
 Détail dans [Déploiement › deploy.yml](../../deploiement/applications.md).
 
 ## Configuration lue de l'environnement
 
-Les images sont **construites une fois par commit** et déployées telles
-quelles sur des environnements aux domaines différents. Aucune adresse n'est
-figée au build : `api`, `front` et les services predict lisent leur
-configuration de leur `.env` (généré par le rôle depuis le Vault et les
-variables).
+Les images sont **construites une fois par commit** et déployées telles quelles
+sur des environnements aux domaines différents. Aucune adresse n'est figée au
+build : `api` et `front` lisent leur configuration de leur `.env` (généré par le
+rôle depuis le Vault et les variables). Le `collector` est pour l'instant
+hardcodé et ne lit rien.
 
 ## Les services
 
 - [front](front.md) — le dashboard
-- [api](api.md) — l'API métier + `predict-cron`
-- [predict](predict.md) — serving, training, collector, etl
+- [api](api.md) — l'API métier
+- [collector](collector.md) — poller Kafka

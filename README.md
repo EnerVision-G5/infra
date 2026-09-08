@@ -37,8 +37,10 @@ puis applique :
 | `mlflow`      | Registre de modèles MLflow (image construite sur place, artefacts volume local ou Azure Blob) |
 | `monitoring`  | Prometheus, Grafana, Loki + Promtail, node_exporter, cAdvisor   |
 
-`deploy.yml` applique le rôle `applications` : Front / API / Predict, un
-`compose.yml` par service, images GHCR épinglées par SHA.
+`deploy.yml` applique le rôle `applications` : Front, API et `collector`
+(poller Kafka), un `compose.yml` par service, images GHCR épinglées par SHA.
+La chaîne de prédiction (serving / training / etl / predict-cron) est en cours
+de reconstruction autour de Kafka et ne fait plus partie de ce rôle.
 
 ## CI
 
@@ -118,19 +120,21 @@ La PR de bump est ce qui rend le déploiement traçable : `vars.yml` sur
 `compose.yml` retouché à la main sur l'hôte casse cette équivalence, et le
 prochain passage du playbook écrase de toute façon la retouche.
 
-| Variable de `vars.yml`     | Image GHCR (`ghcr.io/enervision-g5/…`) | Dépôt       | Workflow CD         |
-| -------------------------- | -------------------------------------- | ----------- | ------------------- |
-| `applications_front_sha`   | `dashboard`                            | `dashboard` | `cd.yml`            |
-| `applications_api_sha`     | `api`                                  | `api`       | `cd.yml`            |
-| `applications_serving_sha` | `predict/serving`                      | `predict`   | `cd-serving.yml`    |
-| `applications_training_sha`| `predict/training`                     | `predict`   | `cd-training.yml`   |
-| `applications_etl_sha`     | `predict/etl`                          | `predict`   | `cd-etl.yml`        |
-| `applications_collector_sha` | `predict/collector`                  | `predict`   | `cd-collector.yml`  |
+| Variable de `vars.yml`       | Image GHCR (`ghcr.io/enervision-g5/…`) | Dépôt       | Workflow CD |
+| ---------------------------- | -------------------------------------- | ----------- | ----------- |
+| `applications_front_sha`     | `dashboard`                            | `dashboard` | `cd.yml`    |
+| `applications_api_sha`       | `api`                                  | `api`       | `cd.yml`    |
+| `applications_collector_sha` | `collector`                            | `collector` | `cd.yml`    |
 
-`predict-cron` tourne sur l'image `api` : il suit `applications_api_sha`, sans
-variable propre. Le registre **MLflow** n'est plus une application — il est
-déployé par le rôle `mlflow` (`provision.yml`), avec une image construite sur
-place (voir [Services › MLflow](docs/content/services/mlflow.md)).
+Le registre **MLflow** n'est plus une application — il est déployé par le rôle
+`mlflow` (`provision.yml`), avec une image construite sur place (voir
+[Services › MLflow](docs/content/services/mlflow.md)).
+
+> **Note** — la suite de cette section (workflows `cd-<service>` de `predict`,
+> smoke tests, rollback du modèle servi) décrit encore l'ancienne chaîne
+> `predict/*`. Elle sera réécrite avec la nouvelle chaîne Kafka. Aujourd'hui
+> chaque dépôt (`dashboard`, `api`, `collector`) a un seul workflow `cd.yml`
+> qui publie une seule image sous `sha-<git-sha>`.
 
 #### 1. Lire le SHA publié
 

@@ -55,11 +55,12 @@ Conséquence à l'ordre de déploiement : `provision.yml` (base vide) →
 | Client | Dialecte | DSN (construit par le rôle `applications`) |
 |---|---|---|
 | `api` | asyncpg | `postgresql+asyncpg://<user>:<pass>@postgres:5432/<db>` |
-| `collector`, `etl`, `training`, `predict-cron` | psycopg | `postgresql+psycopg://<user>:<pass>@postgres:5432/<db>` |
 
 `<user>` / `<db>` = `postgres_user` / `postgres_db`, `<pass>` vient du Vault.
 L'hôte `postgres` est le nom de conteneur du rôle, résolu sur `db_network`.
-Les deux dialectes **ne sont pas interchangeables**.
+
+Les services de la chaîne ML reconstruite (ingester, …) ouvriront la base en
+**psycopg** (synchrone) — un dialecte non interchangeable avec asyncpg.
 
 ## Accès administrateur
 

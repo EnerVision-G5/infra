@@ -1,45 +1,33 @@
 # Déployé par le rôle Ansible "applications" — ne pas éditer sur l'hôte.
-# Collector EnerVision — poller d'ingestion (kind: worker).
+# Collector (dépôt `collector`) — poller : interroge l'API mock et pousse les
+# mesures dans Kafka (topic energy.data.raw). Processus long, sans port.
 #
-# Processus long : il interroge /current sur chaque site à cadence fixe et
-# écrit au fil de l'eau. Pas de port, pas de route Traefik ; sa santé se lit
-# dans son journal. Le rattrapage daté, lui, est un timer systemd (voir le
-# rôle), pas un service de ce compose.
+# Le code est actuellement hardcodé (bootstrap kafka:9092, http://mock-api:8000,
+# topic, sites, intervalle 60 s) : ce compose lance l'image telle quelle. Le
+# `.env` généré est vide pour l'instant — voir collector.env.j2.
 services:
-  poller:
+  collector:
     image: {{ applications_image_namespace }}/{{ applications_collector_image_name }}:{{ applications_collector_sha }}
-    container_name: enervision-collector-poller
-    # Processus long : s'il sort, c'est un incident, il doit repartir.
-    # unless-stopped et non always : un arrêt volontaire de l'exploitant n'est
-    # pas défait au redémarrage du démon Docker.
+    container_name: enervision-collector
     restart: unless-stopped
-    # Qui meurt en premier si la VM manque de mémoire, plutôt que de laisser
-    # le noyau choisir au score — c'est-à-dire souvent le plus gros, donc la
-    # base. Boucle relancée à chaque cycle : un kill lui coûte un tick.
+    # Producteur sans état : le relancer ne coûte que son démarrage. Il cède le
+    # pas à tout ce qui porte de la donnée si la VM manque de mémoire.
     oom_score_adj: 500
-    entrypoint: ["python", "-m", "collector.poller"]
 
     env_file:
       - .env
 
     networks:
-      # Couche brute, où le poller écrit les mesures de la source.
-      - db_network
-      # Stockage objet. Le poller n'y touche pas, mais l'import de
-      # l'historique de référence — `docker compose exec` ou `run` sur cette
-      # même image — lit ses CSV depuis Garage, qui n'est joignable que là.
-      - storage_network
+{% for network in applications_collector_networks %}
+      - {{ network }}
+{% endfor %}
 
-    # Un processus qui tourne des semaines finit par remplir le disque de la
-    # VM : on borne la rotation des journaux.
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "5"
 
-    # Plafonds ressources : la VM 4 vCPU / 8 Go porte toute la stack. `cpus`
-    # est un plafond (somme sur l'hôte > 4), `memory` le garde-fou anti-OOM.
     deploy:
       resources:
         limits:
@@ -47,10 +35,8 @@ services:
           cpus: "{{ applications_collector_cpu_limit }}"
 
 networks:
-  db_network:
+{% for network in applications_collector_networks %}
+  {{ network }}:
     external: true
-    name: db_network
-
-  storage_network:
-    external: true
-    name: storage_network
+    name: {{ network }}
+{% endfor %}

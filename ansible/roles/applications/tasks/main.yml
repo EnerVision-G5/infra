@@ -7,8 +7,7 @@
     fail_msg: >-
       applications_api_jwt_secret est absente ou fait moins de
       {{ applications_api_jwt_secret_min_length }} caractères. L'API refuse de
-      démarrer sans elle : le conteneur sortirait en erreur au lieu de servir.
-      La définir dans le vault, jamais en clair dans le dépôt.
+      démarrer sans elle. La définir dans le vault, jamais en clair dans le dépôt.
     quiet: true
   no_log: true
   when: "'api' in applications_enabled"
@@ -23,71 +22,6 @@
       autorisées. Un joker rendrait l'API lisible depuis n'importe quel site.
     quiet: true
   when: "'api' in applications_enabled"
-
-# Le service d'inférence est routé publiquement et relaie la simulation de
-# pic, qui ÉCRIT sur la source. L'API métier protège la même opération derrière
-# le rôle `writer` : un service ouvert rend ce contrôle contournable, il suffit
-# de l'appeler directement.
-#
-# Vérifié ici plutôt que laissé au service : celui-ci refuse bien de démarrer
-# sans clé, mais l'échec arriverait alors après le déploiement, sur un
-# conteneur qui redémarre en boucle. Autant le dire avant d'y toucher.
-- name: Vérifier que le service d'inférence a une clé de service
-  ansible.builtin.assert:
-    that:
-      - applications_serving_api_key | default('') | length > 0
-    fail_msg: >-
-      applications_serving_api_key est vide alors que le service d'inférence
-      exige une clé sur les routes de son contrat. Générer une valeur avec
-      `python -c "import secrets; print(secrets.token_urlsafe(48))"`, la
-      stocker dans le vault, ou poser applications_serving_auth_enabled à
-      false — ce dernier mode ouvre toutes les routes et ne vaut que pour un
-      poste de développement.
-    quiet: true
-  no_log: true
-  when:
-    - "'serving' in applications_enabled"
-    - applications_serving_auth_enabled | bool
-
-# La clé est la même des deux côtés : le service l'exige, l'API métier et le
-# job de rafraîchissement la présentent. Deux valeurs différentes ne cassent
-# rien au déploiement — elles donnent 401 sur chaque appel, aucune prévision
-# archivée, et un dashboard vide que personne ne rattache à cette cause.
-- name: Vérifier que l'API et le service d'inférence portent la même clé
-  ansible.builtin.assert:
-    that:
-      - applications_predict_api_key == applications_serving_api_key
-    fail_msg: >-
-      applications_predict_api_key diffère de applications_serving_api_key.
-      C'est la même clé vue des deux côtés : le service l'exige, l'API la
-      présente. Un écart donne 401 sur chaque appel, sans rien casser au
-      déploiement.
-    quiet: true
-  no_log: true
-  when:
-    - applications_serving_auth_enabled | bool
-    - applications_enabled | intersect(['serving', 'api', 'predict-cron']) | length > 1
-
-# L'ETL publie les partitions de variables, serving les relit et training les
-# apprend : sans identifiants, les trois démarrent, ne trouvent rien, et ne le
-# disent qu'à la première prévision demandée.
-- name: Vérifier que le stockage objet est joignable par les services predict
-  ansible.builtin.assert:
-    that:
-      - applications_predict_s3_access_key_id | default('') | length > 0
-      - applications_predict_s3_secret_access_key | default('') | length > 0
-    fail_msg: >-
-      applications_predict_storage_root désigne un stockage objet
-      ({{ applications_predict_storage_root }}) mais aucune clé Garage n'est
-      fournie. Définir applications_predict_s3_access_key_id et
-      applications_predict_s3_secret_access_key dans le vault (valeurs
-      produites par `garage key create`).
-    quiet: true
-  no_log: true
-  when:
-    - applications_predict_storage_root.startswith('s3://')
-    - applications_enabled
-      | intersect(['serving', 'training', 'etl']) | length > 0
 
 - name: Vérifier que les origines de la CSP du front ne sont pas permissives
   ansible.builtin.assert:
@@ -107,28 +41,9 @@
       - applications_front_api_base_url | default('') | length > 0
     fail_msg: >-
       applications_front_api_base_url doit porter l'hôte public de l'API.
-      Sans elle, le dashboard affiche une erreur de configuration au lieu
-      d'appeler quoi que ce soit.
+      Sans elle, le dashboard affiche une erreur de configuration.
     quiet: true
   when: "'front' in applications_enabled"
-
-# Le jeu de variables et sa version ne se dissocient pas : changer les
-# décalages change les COLONNES publiées. Deux jeux de colonnes sous une même
-# version se mêleraient dans le même chemin de partitions, et l'entraînement
-# lirait un jeu dont une partie des lignes n'a pas les colonnes qu'il demande
-# — sans erreur, avec des lignes silencieusement écartées.
-- name: Vérifier que la version des variables suit les décalages
-  ansible.builtin.assert:
-    that:
-      - (applications_predict_feature_version | length > 0)
-        == (applications_predict_lag_hours | length > 0)
-    fail_msg: >-
-      applications_predict_feature_version et applications_predict_lag_hours
-      se renseignent ensemble ou pas du tout. Changer les décalages sans
-      changer la version publierait deux jeux de colonnes sous le même
-      chemin ; changer la version sans les décalages produirait une copie
-      inutile du jeu courant.
-    quiet: true
 
 - name: Vérifier qu'au moins une application est activée
   ansible.builtin.assert:
@@ -151,24 +66,11 @@
   loop_control:
     label: "{{ item.name }}"
 
-# Les applications qui empruntent l'image d'une autre en sont exclues :
-# predict-cron porte le job de l'API et suit sa version par construction.
-# L'unicité porte donc sur les seules applications ayant leur propre image.
-- name: Restreindre le contrôle d'unicité aux applications à image propre
-  ansible.builtin.set_fact:
-    applications_own_image: >-
-      {{ applications_services
-         | rejectattr('shares_image_with', 'defined') | list }}
-
-# Sur la référence complète et non sur le seul SHA : le dépôt predict publie
-# serving, training, collector et etl depuis le même commit, qui leur donne à
-# toutes le même tag sur des images distinctes. Exiger un SHA distinct
-# interdirait de déployer deux de ces services au même niveau de code.
 - name: Vérifier l'unicité des images déployées (image:tag distinct)
   ansible.builtin.assert:
     that:
-      - (applications_own_image | map(attribute='image') | list
-         | unique | length) == (applications_own_image | length)
+      - (applications_services | map(attribute='image') | list
+         | unique | length) == (applications_services | length)
     fail_msg: >-
       Deux applications activées pointent la même image au même tag. C'est le
       couple image:tag qui identifie une version déployée.
@@ -218,8 +120,6 @@
     label: "{{ item.name }}"
   no_log: true
 
-# Y compris pour les traitements datés (kind: job) : leur compose n'est pas
-# démarré par ce rôle, mais c'est lui que le timer systemd exécute.
 - name: Générer le compose.yml de chaque application
   ansible.builtin.template:
     src: "{{ item.name }}.compose.yml.j2"
@@ -261,9 +161,6 @@
     label: "{{ item.name }}"
   when: item.name in applications_changed
 
-# Les traitements datés en sont exclus : ils n'ont rien à maintenir en vie, et
-# un `up` déclencherait un entraînement complet à chaque déploiement. Leur
-# image est tirée ci-dessus, leur déclenchement est un timer systemd.
 - name: (Re)déployer chaque application via son compose dédié
   community.docker.docker_compose_v2:
     project_src: "{{ applications_dir }}/{{ item.name }}"
@@ -277,185 +174,3 @@
   loop: "{{ applications_services }}"
   loop_control:
     label: "{{ item.name }}"
-  when: item.kind != 'job'
-
-# --------------------------------------------------------------------------
-# Rattrapage daté du collector : un timer systemd qui rejoue la fenêtre
-# glissante chaque nuit. Séparé du poller (compose) : ce n'est pas un
-# processus long mais un `docker run --rm` ponctuel.
-# --------------------------------------------------------------------------
-- name: Installer les unités systemd du rattrapage collector
-  ansible.builtin.template:
-    src: "{{ item }}.j2"
-    dest: "/etc/systemd/system/{{ item }}"
-    owner: root
-    group: root
-    mode: "0644"
-  loop:
-    - collector-backfill.service
-    - collector-backfill.timer
-  when: applications_collector_backfill_active | bool
-  notify: Reload systemd
-
-- name: Activer et planifier le rattrapage collector
-  ansible.builtin.systemd_service:
-    name: collector-backfill.timer
-    enabled: true
-    state: started
-    daemon_reload: true
-  when: applications_collector_backfill_active | bool
-
-- name: Retirer le rattrapage collector quand il est désactivé
-  ansible.builtin.systemd_service:
-    name: collector-backfill.timer
-    enabled: false
-    state: stopped
-  failed_when: false
-  when: not (applications_collector_backfill_active | bool)
-
-- name: Retirer les unités systemd du rattrapage collector quand il est désactivé
-  ansible.builtin.file:
-    path: "/etc/systemd/system/{{ item }}"
-    state: absent
-  loop:
-    - collector-backfill.service
-    - collector-backfill.timer
-  when: not (applications_collector_backfill_active | bool)
-  notify: Reload systemd
-
-# --------------------------------------------------------------------------
-# Rattrapage ETL : reproduction des variables sur une fenêtre historique.
-#
-# Pas de timer, contrairement au rattrapage collector : refaire l'histoire
-# n'est pas une opération périodique. L'unité existe pour qu'un rattrapage
-# ait un chemin supporté — tranches, plafonds, verrou partagé, fenêtre calme
-# — plutôt qu'un `docker exec` dans le conteneur vivant, qui met deux
-# traitements dans le même cgroup de 512 Mo.
-#
-#   systemctl start etl-backfill
-#   journalctl -u etl-backfill -f
-# --------------------------------------------------------------------------
-- name: Déposer le script du rattrapage ETL
-  ansible.builtin.template:
-    src: etl-backfill.sh.j2
-    dest: "{{ applications_jobs_script_dir }}/enervision-etl-backfill"
-    owner: root
-    group: root
-    mode: "0755"
-  when: applications_etl_backfill_active | bool
-
-- name: Installer l'unité systemd du rattrapage ETL
-  ansible.builtin.template:
-    src: etl-backfill.service.j2
-    dest: /etc/systemd/system/etl-backfill.service
-    owner: root
-    group: root
-    mode: "0644"
-  when: applications_etl_backfill_active | bool
-  notify: Reload systemd
-
-# Ni `enabled` ni `state: started` : l'unité est déclenchée à la main, et
-# l'activer la lancerait au prochain démarrage de la VM — c'est-à-dire un
-# rattrapage de deux ans juste après un incident.
-- name: Retirer le rattrapage ETL quand il est désactivé
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: absent
-  loop:
-    - /etc/systemd/system/etl-backfill.service
-    - "{{ applications_jobs_script_dir }}/enervision-etl-backfill"
-  when: not (applications_etl_backfill_active | bool)
-  notify: Reload systemd
-
-# --------------------------------------------------------------------------
-# Réentraînement du modèle : même schéma, sur le compose déposé plus haut.
-# Le timer est le seul à lancer l'image predict/training ; un déploiement ne
-# réapprend rien, il met à jour la version que le prochain run utilisera.
-# --------------------------------------------------------------------------
-- name: Installer les unités systemd du réentraînement
-  ansible.builtin.template:
-    src: "{{ item }}.j2"
-    dest: "/etc/systemd/system/{{ item }}"
-    owner: root
-    group: root
-    mode: "0644"
-  loop:
-    - training.service
-    - training.timer
-  when: applications_training_active | bool
-  notify: Reload systemd
-
-- name: Activer et planifier le réentraînement
-  ansible.builtin.systemd_service:
-    name: training.timer
-    enabled: true
-    state: started
-    daemon_reload: true
-  when: applications_training_active | bool
-
-- name: Retirer le réentraînement quand il est désactivé
-  ansible.builtin.systemd_service:
-    name: training.timer
-    enabled: false
-    state: stopped
-  failed_when: false
-  when: not (applications_training_active | bool)
-
-- name: Retirer les unités systemd du réentraînement quand il est désactivé
-  ansible.builtin.file:
-    path: "/etc/systemd/system/{{ item }}"
-    state: absent
-  loop:
-    - training.service
-    - training.timer
-  when: not (applications_training_active | bool)
-  notify: Reload systemd
-
-# --------------------------------------------------------------------------
-# Surveillance de dérive : même schéma que le réentraînement, sur le même
-# compose et la même image, avec un autre point d'entrée. Quotidienne là où
-# l'entraînement est hebdomadaire — une dégradation installée depuis trois
-# jours doit se voir avant le dimanche suivant.
-#
-# Sans ces unités, le module existe, il est testé, il a sa commande, et rien
-# ne le lance : le projet n'a alors aucune détection automatique de la
-# dégradation du modèle en service.
-# --------------------------------------------------------------------------
-- name: Installer les unités systemd de la surveillance de dérive
-  ansible.builtin.template:
-    src: "{{ item }}.j2"
-    dest: "/etc/systemd/system/{{ item }}"
-    owner: root
-    group: root
-    mode: "0644"
-  loop:
-    - drift.service
-    - drift.timer
-  when: applications_drift_active | bool
-  notify: Reload systemd
-
-- name: Activer et planifier la surveillance de dérive
-  ansible.builtin.systemd_service:
-    name: drift.timer
-    enabled: true
-    state: started
-    daemon_reload: true
-  when: applications_drift_active | bool
-
-- name: Retirer la surveillance de dérive quand elle est désactivée
-  ansible.builtin.systemd_service:
-    name: drift.timer
-    enabled: false
-    state: stopped
-  failed_when: false
-  when: not (applications_drift_active | bool)
-
-- name: Retirer les unités systemd de la surveillance quand elle est désactivée
-  ansible.builtin.file:
-    path: "/etc/systemd/system/{{ item }}"
-    state: absent
-  loop:
-    - drift.service
-    - drift.timer
-  when: not (applications_drift_active | bool)
-  notify: Reload systemd

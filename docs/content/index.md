@@ -24,18 +24,15 @@ flowchart LR
     U[Navigateur] -->|HTTP| T(Traefik)
     T --> F[front]
     T --> A[api]
-    T --> S[serving]
     T --> G[Garage S3 / web]
     T --> GR[Grafana]
     A --> DB[(PostgreSQL)]
-    A -->|/predict| S
-    S --> ML[MLflow]
-    S --> GA[(Garage)]
-    C[collector] --> DB
-    E[etl] --> DB
-    TR[training] --> ML
-    TR --> GA
+    C[collector] -->|energy.data.raw| K[(Kafka)]
+    C --> MA[mock-api]
 ```
+
+La chaîne de prédiction (ingester, archiver, Flink, MLflow, inférence) se
+reconstruit autour de Kafka — voir [Architecture](architecture/index.md).
 
 ## Par où commencer
 
