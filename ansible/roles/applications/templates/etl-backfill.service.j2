@@ -1,0 +1,29 @@
+# Déployé par le rôle Ansible "applications" — ne pas éditer sur l'hôte.
+[Unit]
+Description=EnerVision — rattrapage des variables sur une fenêtre historique
+Documentation=https://github.com/EnerVision-G5/predict
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+
+# Fenêtre calme uniquement. `ExecCondition` marque l'unité SAUTÉE, et non en
+# échec, quand elle rend 1 : « ce n'est pas le moment » ne doit pas se lire
+# comme « ça a raté » dans `systemctl --failed`.
+#
+# Pour un rattrapage assumé en journée :
+#   systemctl set-environment ETL_BACKFILL_FORCE=1
+ExecCondition={{ applications_jobs_script_dir }}/enervision-etl-backfill --verifier-fenetre
+
+# Le verrou partagé sérialise ce rattrapage avec l'entraînement, la
+# surveillance de dérive et le rattrapage de la collecte : une seule instance
+# lourde à la fois sur une VM qui n'a pas de quoi en porter deux.
+ExecStart=/usr/bin/flock --wait {{ applications_jobs_lock_wait_seconds }} \
+  {{ applications_jobs_lock }} \
+  {{ applications_jobs_script_dir }}/enervision-etl-backfill
+
+# Deux ans par tranches de {{ applications_etl_backfill_slice_days }} journées
+# enchaînent des dizaines de conteneurs. Sans cette borne, systemd tuerait le
+# service au bout de 90 s, au milieu de la première.
+TimeoutStartSec={{ applications_etl_backfill_timeout_seconds }}

@@ -13,7 +13,9 @@ Type=oneshot
 # --profile jobs parce que le service est justement retiré des démarrages
 # ordinaires par ce profil.
 WorkingDirectory={{ applications_dir }}/training
-ExecStart=/usr/bin/docker compose \
+ExecStart=/usr/bin/flock --wait {{ applications_jobs_lock_wait_seconds }} \
+  {{ applications_jobs_lock }} \
+  /usr/bin/docker compose \
   --project-name enervision-training \
   --profile jobs \
   run --rm -T training \
