@@ -100,10 +100,10 @@ terraform init
 terraform plan
 ```
 
-Un `apply` local est possible, mais la voie normale est la pull request :
-le plan y est posté en commentaire, et la fusion applique exactement ce
-plan. Appliquer à la main ce que la CI applique aussi finit par deux
-vérités.
+Un `apply` local est possible, mais la voie normale est la pull request,
+où le plan est posté en commentaire, puis un **lancement manuel** de
+l'apply depuis GitHub une fois la PR fusionnée. Appliquer à la main ce que
+la CI applique aussi finit par deux vérités.
 
 Vérifier le résultat sans clé, avec son identité :
 
@@ -128,8 +128,8 @@ bash terraform/scripts/new-env.sh POC PROD
 Puis relire dans `PROD/` : `PROD.auto.tfvars` (abonnement, groupe de
 ressources, valeurs), `PROD.backend.tf` (où vit son état), `main.tf` (les
 valeurs passées au module). Si le groupe est ailleurs, un bootstrap dessus.
-Ouvrir une pull request : la CI découvre le dossier seule, valide,
-planifie, et applique à la fusion.
+Ouvrir une pull request : la CI découvre le dossier seule, valide et
+planifie ; après fusion, l'apply se lance à la main (voir CI/CD).
 
 ## Scripts
 
@@ -151,8 +151,15 @@ concerne tous) :
 | Événement | Jobs | Ce que ça garantit |
 | --- | --- | --- |
 | pull request | `verify` (fmt, validate, tflint) puis `plan`, commenté sur la PR | Le changement est relu **avec** son effet réel sur Azure |
-| push `develop` | `plan` puis `apply` du plan, tous les environnements sauf `PROD` | Ce qui est sur `develop` est ce qui est sur Azure, comme `vars.yml` l'est pour la VM |
-| push `master` | idem, `PROD` seulement | La production suit la branche de production |
+| lancement manuel (*Actions → terraform → Run workflow*) | `verify`, puis `plan` et `apply` de ce plan, sur l'environnement saisi | Rien ne s'applique sans qu'une personne l'ait décidé |
+
+**Rien ne s'applique à la fusion.** Une fois la PR fusionnée, quelqu'un
+ouvre *Actions → terraform → Run workflow*, choisit la branche `develop`
+(`master` pour `PROD`) et saisit l'environnement. Le workflow refuse tout
+autre couple branche/environnement, et l'identité Azure ne reconnaît de
+toute façon que ces deux branches. C'est le pendant du `ansible-playbook
+deploy.yml` lancé depuis un poste : la fusion rend le changement
+déployable, le clic le déploie.
 
 La version de Terraform est celle du `.terraform-version` de chaque
 environnement. Un seul plan ou apply à la fois par environnement.
@@ -163,8 +170,9 @@ develop » ou « branche master », et Azure n'en échange pas d'autre. Elle a
 les mêmes rôles que vous, sur votre seul groupe de ressources.
 
 Ce que le plan gratuit GitHub ne permet pas sur un dépôt privé : les
-environnements protégés (revue obligatoire avant `apply`). La revue est
-celle de la PR ; la protection de branche manque, comme pour Ansible.
+environnements protégés (approbation d'une seconde personne au moment de
+l'apply). La relecture est celle de la PR, la décision celle du clic ; la
+protection de branche manque, comme pour Ansible.
 
 ## Aller plus loin
 

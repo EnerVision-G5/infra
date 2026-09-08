@@ -20,7 +20,7 @@ valider ; l'hôte est configuré et les applications déployées par
 Le dossier [`terraform/`](terraform/README.md) est le pendant cloud, ouvert
 avec un POC : un compte de stockage Blob Azure pour l'environnement `POC`
 dans le groupe de ressources fourni par l'école, état distant, CI/CD dédiée
-(`terraform.yml`, plan sur PR, apply à la fusion, OIDC sans secret). Il ne
+(`terraform.yml`, plan sur PR, apply à la main depuis GitHub, OIDC sans secret). Il ne
 change rien à la cible on-premise.
 
 ## Périmètre
@@ -53,9 +53,9 @@ Un playbook invalide, un rôle non conforme ou un secret en clair fait échouer
 la PR.
 
 `.github/workflows/terraform.yml` ne se déclenche que si `terraform/` change :
-`fmt`, `validate`, `tflint` et `plan` commenté sur la PR, par environnement ;
-`apply` au push sur `develop` (`master` pour `PROD`). Détail dans
-[terraform/README.md](terraform/README.md#cicd).
+`fmt`, `validate`, `tflint` et `plan` commenté sur la PR, par environnement.
+L'`apply` ne se lance qu'à la main, depuis l'onglet Actions, sur `develop`
+(`master` pour `PROD`). Détail dans [terraform/README.md](terraform/README.md#cicd).
 
 ## Développer en local
 
