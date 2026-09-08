@@ -151,6 +151,10 @@ concerne tous) :
 | Événement | Jobs | Ce que ça garantit |
 | --- | --- | --- |
 | pull request | `verify` (fmt, validate, tflint) puis `plan`, commenté sur la PR | Le changement est relu **avec** son effet réel sur Azure |
+
+Le commentaire de plan est unique par environnement et mis à jour à chaque
+push : verdict en première ligne (rien à faire, changements, ou
+**destructions** en rouge), lien vers le run, sortie complète repliée.
 | lancement manuel (*Actions → terraform → Run workflow*) | `verify`, puis `plan` et `apply` de ce plan, sur l'environnement saisi | Rien ne s'applique sans qu'une personne l'ait décidé |
 
 **Rien ne s'applique à la fusion.** Une fois la PR fusionnée, quelqu'un

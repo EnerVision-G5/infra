@@ -184,45 +184,100 @@ jobs:
       - name: terraform init
         run: terraform init
 
+      # -detailed-exitcode : 0 rien à faire, 2 des changements, 1 une erreur.
+      # Le job ne s'arrête pas sur l'erreur ici : le commentaire doit la
+      # montrer, puis l'étape suivante fait échouer le job.
       - name: terraform plan
         id: plan
         run: |
-          set -o pipefail
-          terraform plan -no-color -lock-timeout=5m -out=tfplan | tee "$RUNNER_TEMP/plan.txt"
+          set +e
+          terraform plan -no-color -lock-timeout=5m -detailed-exitcode -out=tfplan \
+            > "$RUNNER_TEMP/plan.txt" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/plan.txt"
+          echo "exitcode=$code" >> "$GITHUB_OUTPUT"
 
-      # Le plan sur la PR, là où on relit : c'est la revue d'infrastructure.
+          # Verdict en une ligne, et compte des destructions : c'est ce qu'un
+          # relecteur doit voir sans déplier quoi que ce soit.
+          summary="$(grep -E '^(Plan: |No changes\.)' "$RUNNER_TEMP/plan.txt" | tail -1)"
+          destroy="$(printf '%s' "$summary" | sed -nE 's/.* ([0-9]+) to destroy.*/\1/p')"
+          case "$code" in
+            0) verdict="✅ Aucun changement : Azure correspond déjà au code." ;;
+            2) if [ "${destroy:-0}" -gt 0 ]; then
+                 verdict="🔴 **${destroy} ressource(s) détruite(s)** — ${summary}"
+               else
+                 verdict="🟡 ${summary}"
+               fi ;;
+            *) verdict="❌ Le plan a échoué, voir la sortie." ;;
+          esac
+          echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
+
+          # Sortie utile seulement : sans les rafraîchissements d'état, sans le
+          # rappel de la commande apply (inexact ici), tronquée si énorme.
+          sed -E '/^(module\.|data\.|[a-z_]+\.).*(Refreshing state|Reading\.\.\.|Read complete)/d' \
+            "$RUNNER_TEMP/plan.txt" \
+            | sed -E '/^Note: You didn.t use the -out option/,$d' \
+            | sed -E '/^Saved the plan to/,$d' \
+            | grep -vE '^\s*$' > "$RUNNER_TEMP/plan.clean.txt" || true
+
+      # Un commentaire par environnement, mis à jour à chaque push : la PR
+      # garde un seul plan à jour au lieu d'une pile de versions périmées.
       - name: Commenter le plan
         if: always() && steps.plan.outcome != 'skipped'
         uses: actions/github-script@v7
         env:
           ENV_NAME: ${{ matrix.env }}
-          OUTCOME: ${{ steps.plan.outcome }}
+          VERDICT: ${{ steps.plan.outputs.verdict }}
+          BRANCH: ${{ github.head_ref }}
         with:
           script: |
             const fs = require('fs');
-            const path = `${process.env.RUNNER_TEMP}/plan.txt`;
-            const raw = fs.existsSync(path) ? fs.readFileSync(path, 'utf8') : '(pas de sortie)';
-            const plan = raw.length > 60000 ? '…\n' + raw.slice(-60000) : raw;
+            const env = process.env.ENV_NAME;
+            const marker = `<!-- terraform-plan:${env} -->`;
+            const path = `${process.env.RUNNER_TEMP}/plan.clean.txt`;
+            const raw = fs.existsSync(path) ? fs.readFileSync(path, 'utf8').trim() : '(pas de sortie)';
+            const plan = raw.length > 55000 ? '…\n' + raw.slice(-55000) : raw;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const sha = context.payload.pull_request.head.sha;
             const body = [
-              `### Terraform plan — ${process.env.ENV_NAME} (${process.env.OUTCOME})`,
+              marker,
+              `### Terraform plan — \`${env}\``,
               '',
-              '<details><summary>Sortie de `terraform plan`</summary>',
+              process.env.VERDICT || '❌ Verdict indisponible.',
               '',
-              '```',
+              `Branche \`${process.env.BRANCH}\` · commit ${sha.slice(0, 7)} · [run](${runUrl})`,
+              '',
+              '<details><summary>Sortie de <code>terraform plan</code></summary>',
+              '',
+              '```hcl',
               plan,
               '```',
               '</details>',
               '',
-              `_Commit ${context.sha.slice(0, 7)} — rien ne s'applique à la fusion : Actions → terraform → Run workflow, depuis develop (master pour PROD)._`,
+              "_Rien ne s'applique à la fusion. Après fusion : Actions → terraform → Run workflow, branche `develop` (`master` pour `PROD`), environnement `" + env + "`._",
             ].join('\n');
-            await github.rest.issues.createComment({
-              ...context.repo,
-              issue_number: context.issue.number,
-              body,
-            });
 
+            const { data: comments } = await github.rest.issues.listComments({
+              ...context.repo, issue_number: context.issue.number, per_page: 100,
+            });
+            const mine = comments.find(c => c.user.type === 'Bot' && c.body.startsWith(marker));
+            if (mine) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: mine.id, body });
+            } else {
+              await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
+            }
+
+      - name: Échec du plan
+        if: steps.plan.outputs.exitcode == '1'
+        run: |
+          echo "::error::terraform plan a échoué pour ${{ matrix.env }} (voir le commentaire de la PR)"
+          exit 1
+
+  # Nom fixe : sur une pull request ce job est ignoré, et un nom qui dépend
+  # de la matrice s'afficherait alors non résolu dans la liste des checks.
   apply:
-    name: Apply ${{ matrix.env }}
+    name: Apply (lancement manuel)
     needs: [envs, verify]
     if: github.event_name == 'workflow_dispatch' && needs.envs.outputs.apply != '[]'
     runs-on: ubuntu-latest
