@@ -54,6 +54,12 @@ variable "team" {
   }
 }
 
+variable "project_roles" {
+  description = "Pose les rôles de niveau groupe (Reader, rôle Devops) et l'accès à l'état Terraform pour les membres de team. Ces rôles sont par groupe de ressources, pas par environnement : un seul environnement du groupe doit l'activer, celui du bootstrap. Les autres ne posent que les rôles sur leurs conteneurs."
+  type        = bool
+  default     = false
+}
+
 variable "devops_role_name" {
   description = "Rôle Azure du niveau devops sur le groupe : celui que l'école donne à l'étudiant qui tient le groupe. Contributor dans un abonnement à soi."
   type        = string
