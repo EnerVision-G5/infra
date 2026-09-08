@@ -19,7 +19,12 @@ services:
       - .env
 
     networks:
+      # Couche brute, où le poller écrit les mesures de la source.
       - db_network
+      # Stockage objet. Le poller n'y touche pas, mais l'import de
+      # l'historique de référence — `docker compose exec` ou `run` sur cette
+      # même image — lit ses CSV depuis Garage, qui n'est joignable que là.
+      - storage_network
 
     # Un processus qui tourne des semaines finit par remplir le disque de la
     # VM : on borne la rotation des journaux.
@@ -41,3 +46,7 @@ networks:
   db_network:
     external: true
     name: db_network
+
+  storage_network:
+    external: true
+    name: storage_network

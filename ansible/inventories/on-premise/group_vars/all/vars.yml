@@ -51,6 +51,11 @@ applications_api_access_token_expire_minutes: 60
 # l'ETL publierait ailleurs que là où l'entraînement apprend et où le service
 # d'inférence relit.
 applications_predict_storage_root: "s3://enervision-features"
+# Historique de référence, dans son propre seau. Partagé par le collecteur
+# seul : c'est lui qui le charge en base, une fois, à l'installation. Les CSV
+# ne sont plus versionnés avec le code — les déposer sur Garage avant de
+# lancer `python -m collector.datasets`, cf. le README de predict.
+applications_predict_datasets_root: "s3://enervision-datasets"
 # applications_predict_mlflow_tracking_uri n'est pas repris ici : le registre
 # est déployé par le rôle, et son défaut désigne déjà le conteneur déployé.
 # Point d'accès interne de Garage (storage_network). Les identifiants
