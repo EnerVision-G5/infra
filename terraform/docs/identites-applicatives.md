@@ -74,18 +74,22 @@ La clé privée va dans le vault Ansible ; les valeurs de l'API dans son
 
 ## Côté API
 
-Variables d'environnement, une identité par niveau de droit :
+Huit variables. Seules deux changent d'une API à l'autre, et elles vont
+ensemble : l'identité demandée et le sujet du jeton.
 
-| Variable | Valeur | Source |
-| --- | --- | --- |
-| `AZURE_TENANT_ID` | locataire | secret GitHub du même nom, ou `az account show` |
-| `AZURE_CLIENT_ID` | `client_id` de l'identité (`api-rw` ou `api-ro`) | `terraform output workload_identities` |
-| `WORKLOAD_ISSUER` | URL de l'émetteur | `terraform output workload_issuer` |
-| `WORKLOAD_SUBJECT` | `dev/api-rw` ou `dev/api-ro` | idem |
-| `WORKLOAD_KEY_FILE` | chemin de la clé privée montée dans le conteneur | vault Ansible |
-| `WORKLOAD_KID` | `kid` publié dans le JWKS | fichier `.kid` à côté de la clé |
-| `BLOB_ACCOUNT_URL` | `https://<compte>.blob.core.windows.net` | `terraform output blob_endpoint` |
-| `BLOB_CONTAINER` | `dev-data` | `terraform output storage_containers` |
+| Variable | API qui écrit | API qui ne fait que lire | Source |
+| --- | --- | --- | --- |
+| `AZURE_CLIENT_ID` | `client_id` de **`api-rw`** | `client_id` de **`api-ro`** | `terraform output workload_identities` |
+| `WORKLOAD_SUBJECT` | **`dev/api-rw`** | **`dev/api-ro`** | idem |
+| `AZURE_TENANT_ID` | le locataire | idem | `az account show --query tenantId` |
+| `WORKLOAD_ISSUER` | `https://<compte>.z28.web.core.windows.net/dev` | idem | `terraform output workload_issuer` |
+| `WORKLOAD_KEY_FILE` | chemin de la clé privée montée dans le conteneur | idem, **la même clé** | vault Ansible |
+| `WORKLOAD_KID` | `dev-20260908` | idem | fichier `.kid` à côté de la clé |
+| `BLOB_ACCOUNT_URL` | `https://<compte>.blob.core.windows.net` | idem | `terraform output blob_endpoint` |
+| `BLOB_CONTAINER` | `dev-data` | idem | `terraform output storage_containers` |
+
+Le rôle Ansible `applications` produit ce `.env` comme celui de l'API
+métier : les valeurs communes dans `vars.yml`, la clé dans le vault.
 
 Dépendances : `azure-identity`, `azure-storage-blob`, `PyJWT[crypto]`.
 
@@ -140,6 +144,20 @@ conteneur, `api-ro` a *Storage Blob Data Reader*. Même code, même clé
 privée, même émetteur : seule l'identité qu'on prétend être change, et
 avec elle ce qu'Azure accepte. Retirer un droit se fait dans Terraform,
 sans toucher à l'API ni à la clé.
+
+## Trois durées, rien à renouveler à la main
+
+| Objet | Vit | Renouvelé par |
+| --- | --- | --- |
+| La clé privée | des mois, jusqu'à une rotation décidée | vous, rarement (section Rotation) |
+| Le jeton que l'API signe avec la clé | **5 minutes** | l'API, sans réseau, en une milliseconde, chaque fois que le SDK le demande |
+| Le jeton d'accès rendu par Entra ID | environ 1 heure | le SDK, en cache, ré-échangé à l'expiration |
+
+Les cinq minutes ne bloquent donc rien : ce jeton est jetable par
+conception, et c'est une protection, un jeton intercepté ne vaut que cinq
+minutes. Dans le code, c'est la fonction `workload_assertion` que le SDK
+rappelle lui-même. Ce qui bloquerait une API : une clé privée absente, ou
+qui ne correspond plus à la clé publique publiée (rotation mal faite).
 
 ## Démonstration
 
