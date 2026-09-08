@@ -169,6 +169,54 @@ docker ps --filter name=enervision- --format '{{.Names}}\t{{.Status}}'
 | `http://grafana.enervision.com/` | login Grafana ; dashboard cAdvisor **rempli** |
 | `http://garage.enervision.com/` | interface Garage |
 
+## 10 bis — Amorçage : des variables avant sept jours de collecte
+
+Une heure n'est publiée que si **tous** ses décalages existent, et `lag_168h`
+n'a rien à désigner tant que la collecte est plus jeune que sept jours. Un
+déploiement neuf publie donc des partitions **vides** pendant une semaine :
+`serving` n'a rien à lire, et aucune erreur ne le dit.
+
+Deux attitudes, et c'est un choix, pas un réglage.
+
+**Attendre.** Rien à faire ; les variables apparaissent d'elles-mêmes sept
+jours après le premier tick du poller. Le premier modèle servi connaît alors
+la saisonnalité hebdomadaire.
+
+**Amorcer.** Un jeu réduit produit des variables tout de suite, sans cette
+saisonnalité. Dans `group_vars/all/vars.yml` :
+
+```yaml
+applications_predict_feature_version: "v1-amorcage"
+applications_predict_lag_hours: "1,24"
+```
+
+Les deux se renseignent **ensemble** — le rôle refuse de déployer sinon.
+Changer les décalages change les colonnes publiées : sous une même version,
+deux jeux de colonnes se mêleraient dans le même chemin de partitions, et
+l'entraînement lirait des lignes amputées sans qu'aucune erreur ne le dise.
+
+```bash
+ansible-playbook ansible/playbooks/deploy.yml --ask-vault-pass
+docker exec enervision-etl python -m etl --days 2      # produire tout de suite
+docker exec garage /garage bucket info enervision-features
+```
+
+**Le retour à `v1` est un réentraînement, pas une bascule.** Le modèle servi
+pendant l'amorçage ne connaît pas `lag_168h`. Dès que la collecte couvre sept
+jours :
+
+```bash
+# 1. retirer les deux variables de vars.yml, redéployer
+# 2. reproduire les partitions v1 sur la fenêtre disponible
+systemctl start etl-backfill
+# 3. réentraîner et promouvoir sur v1
+cd /opt/srv/applications/training
+docker compose --project-name enervision-training --profile jobs   run --rm training --promote
+```
+
+Les partitions `v1-amorcage` peuvent rester : elles vivent dans leur propre
+chemin et ne recouvrent rien.
+
 ## 11 — Premier modèle
 
 `serving` répond `503` tant qu'aucun modèle n'est promu. Lancer un
