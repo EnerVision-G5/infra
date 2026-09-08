@@ -1,0 +1,75 @@
+name: terraform-new-env
+
+# Créer un environnement depuis GitHub, sans poste : Actions → terraform-new-env
+# → Run workflow, nom du nouvel environnement et environnement modèle. Le
+# workflow lance scripts/new-env.sh, pousse une branche env/<NOM> et ouvre la
+# pull request. Il ne touche pas à Azure : c'est la PR, puis le lancement
+# manuel de `terraform`, qui déploient.
+#
+# Limite GitHub : une PR ouverte avec le jeton du workflow ne déclenche pas
+# les autres workflows. Le plan tourne dès le premier push humain sur la
+# branche, et il y en a toujours un : relire et compléter <NOM>.auto.tfvars.
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: "Nom du nouvel environnement (MAJUSCULES, ex. STAGING)"
+        required: true
+        type: string
+      source:
+        description: "Environnement modèle à copier"
+        required: true
+        default: "DEV"
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  create:
+    name: Créer ${{ inputs.name }} depuis ${{ inputs.source }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.16.0"
+          terraform_wrapper: false
+
+      - name: new-env.sh
+        run: bash terraform/scripts/new-env.sh "${{ inputs.source }}" "${{ inputs.name }}"
+
+      - name: Branche et pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ inputs.name }}
+          SOURCE: ${{ inputs.source }}
+        run: |
+          set -euo pipefail
+          branch="env/${NAME}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add "terraform/${NAME}"
+          git commit -m "feat(terraform): environnement ${NAME} (copie de ${SOURCE})"
+          git push -u origin "$branch"
+          gh pr create --base develop --head "$branch" \
+            --title "Environnement Terraform ${NAME}" \
+            --body "$(cat <<EOF
+          Dossier \`terraform/${NAME}/\` créé depuis \`${SOURCE}\` par le workflow *terraform-new-env*.
+
+          À relire avant de demander la revue :
+
+          - \`${NAME}.auto.tfvars\` : abonnement, groupe de ressources, équipe, briques ;
+          - \`${NAME}.backend.tf\` : où vit l'état (clé \`${NAME}.tfstate\`) ;
+          - si le groupe de ressources n'est pas celui du bootstrap, son détenteur lance \`terraform/scripts/allow-ci.sh\` dessus.
+
+          Le plan se poste ici au premier push. Rien ne s'applique à la fusion : ensuite, *Actions → terraform → Run workflow*, environnement \`${NAME}\`.
+          EOF
+          )"

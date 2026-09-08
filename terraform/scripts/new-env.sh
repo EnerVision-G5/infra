@@ -59,4 +59,4 @@ command -v terraform >/dev/null && terraform fmt "$dst_dir" >/dev/null
 echo "Créé : $dst_dir"
 echo
 echo "À relire : $env_name.auto.tfvars (subscription_id, valeurs), $env_name.backend.tf, main.tf."
-echo "Puis une pull request : la CI valide, planifie, et applique à la fusion (README, CI/CD)."
+echo "Puis une pull request : la CI valide et planifie ; après fusion, apply par lancement manuel (README, CI/CD)."
