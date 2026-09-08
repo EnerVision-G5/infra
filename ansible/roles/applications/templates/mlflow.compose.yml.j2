@@ -10,6 +10,10 @@ services:
     image: {{ applications_image_namespace }}/{{ applications_training_image_name }}:{{ applications_training_sha }}
     container_name: enervision-mlflow
     restart: unless-stopped
+    # Qui meurt en premier si la VM manque de mémoire, plutôt que de laisser
+    # le noyau choisir au score — c'est-à-dire souvent le plus gros, donc la
+    # base. Registre consultable : reconstructible, et le plus gros résident de la VM.
+    oom_score_adj: 300
 
     # L'image sert `python -m training` : le registre redéclare son point
     # d'entrée pour lancer le serveur au lieu d'un entraînement.
@@ -21,6 +25,22 @@ services:
       - --backend-store-uri={{ applications_mlflow_backend_store_uri }}
       - --artifacts-destination={{ applications_mlflow_artifacts_destination }}
       - --allowed-hosts={{ (applications_mlflow_allowed_hosts + ([applications_mlflow_host] if applications_mlflow_expose | bool else [])) | join(',') }}
+
+      # Processus de service. MLflow en lance QUATRE par défaut, chacun
+      # chargeant l'application entière — et l'application, ici, est l'image
+      # de training : mlflow, xgboost, scikit-learn et pandas.
+      #
+      # Mesuré sur cette image, à froid, juste après le démarrage :
+      #   1 worker  -> 1671 Mo     4 workers -> 2196 Mo
+      #   2 workers -> 1866 Mo
+      # soit un socle partagé d'environ 1,6 Go et ~195 Mo par worker de plus.
+      #
+      # Quatre workers n'ont aucun sens ici : le registre a trois clients —
+      # training qui enregistre, serving qui résout un alias au démarrage, et
+      # un exploitant qui consulte l'interface par tunnel. Aucune concurrence
+      # à absorber, et le plafond CPU du conteneur vaut de toute façon
+      # {{ applications_mlflow_cpu_limit }}.
+      - --workers={{ applications_mlflow_workers }}
 
     env_file:
       - .env
@@ -62,6 +82,14 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+
+    # Plafonds ressources : la VM 4 vCPU / 8 Go porte toute la stack. `cpus`
+    # est un plafond (somme sur l'hôte > 4), `memory` le garde-fou anti-OOM.
+    deploy:
+      resources:
+        limits:
+          memory: {{ applications_mlflow_memory_limit }}
+          cpus: "{{ applications_mlflow_cpu_limit }}"
 {% if applications_mlflow_expose | bool %}
 
     # MLflow n'a aucune authentification propre, et déplacer un alias dans le

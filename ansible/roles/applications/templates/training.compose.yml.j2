@@ -16,6 +16,9 @@ services:
     # Un entraînement qui échoue est un incident à lire, pas à rejouer en
     # boucle : le timer repassera à la prochaine échéance.
     restart: "no"
+    # Les premiers sacrifiés si la VM manque de mémoire : un traitement daté
+    # tué se relance, une base tuée en pleine écriture coûte une reprise.
+    oom_score_adj: 800
 
     env_file:
       - .env
@@ -36,6 +39,16 @@ services:
         max-size: "10m"
         max-file: "5"
 
+    # Plafonds ressources. `docker compose run` (lancé par training.timer)
+    # honore aussi `deploy.resources.limits`. Plafonds plus larges que les
+    # services en ligne : le job tourne la nuit, staggeré avec drift et le
+    # rattrapage collecte. `cpus` reste un plafond, pas une réservation.
+    deploy:
+      resources:
+        limits:
+          memory: {{ applications_training_memory_limit }}
+          cpus: "{{ applications_training_cpu_limit }}"
+
   # Surveillance de dérive. Même image que l'entraînement — c'est le même
   # paquet — mais un autre point d'entrée : `python -m training.drift` là où
   # l'image sert `python -m training`. Déclarée ici plutôt que dans son propre
@@ -51,6 +64,9 @@ services:
     image: {{ applications_image_namespace }}/{{ applications_training_image_name }}:{{ applications_training_sha }}
     profiles: ["jobs"]
     restart: "no"
+    # Les premiers sacrifiés si la VM manque de mémoire : un traitement daté
+    # tué se relance, une base tuée en pleine écriture coûte une reprise.
+    oom_score_adj: 800
     entrypoint: ["python", "-m", "training.drift"]
 
     env_file:
@@ -69,6 +85,13 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+
+    # Plafonds ressources, honorés par le `docker compose run` de drift.timer.
+    deploy:
+      resources:
+        limits:
+          memory: {{ applications_drift_memory_limit }}
+          cpus: "{{ applications_drift_cpu_limit }}"
 
 networks:
   ml_network:

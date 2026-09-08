@@ -6,6 +6,10 @@ services:
     image: {{ applications_image_namespace }}/{{ applications_front_image_name }}:{{ applications_front_sha }}
     container_name: enervision-front
     restart: unless-stopped
+    # Qui meurt en premier si la VM manque de mémoire, plutôt que de laisser
+    # le noyau choisir au score. Serveur statique sans état : le relancer
+    # ne coûte que le temps de son démarrage.
+    oom_score_adj: 500
 
     # Configuration lue au démarrage du conteneur — adresses de service et
     # origines autorisées par la CSP. L'image est construite une fois par
@@ -26,6 +30,14 @@ services:
       # - "traefik.http.routers.enervision-front.tls.certresolver={{ traefik_certresolver }}"
       - "traefik.http.routers.enervision-front.service=enervision-front"
       - "traefik.http.services.enervision-front.loadbalancer.server.port={{ applications_front_port }}"
+
+    # Plafonds ressources : la VM 4 vCPU / 8 Go porte toute la stack. `cpus`
+    # est un plafond (somme sur l'hôte > 4), `memory` le garde-fou anti-OOM.
+    deploy:
+      resources:
+        limits:
+          memory: {{ applications_front_memory_limit }}
+          cpus: "{{ applications_front_cpu_limit }}"
 
 networks:
   proxy_network:

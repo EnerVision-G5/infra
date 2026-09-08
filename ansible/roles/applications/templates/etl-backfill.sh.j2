@@ -1,0 +1,67 @@
+#!/bin/sh
+# Déployé par le rôle Ansible "applications" — ne pas éditer sur l'hôte.
+#
+# Rattrapage des variables sur une fenêtre historique, par tranches.
+#
+# Le corps est ici et non dans l'ExecStart de l'unité parce que systemd
+# substitue lui-même $VAR et ${VAR} dans une ligne de commande, avant tout
+# shell : une boucle écrite dans l'unité verrait ses variables vidées, et
+# ${X:-defaut} n'y a pas le sens qu'on croit.
+#
+# Deux modes :
+#   --verifier-fenetre  rend 0 dans la fenêtre calme, 1 en dehors
+#   (sans argument)     exécute le rattrapage
+set -eu
+
+FENETRE_DEBUT={{ applications_etl_backfill_window_start_hour }}
+FENETRE_FIN={{ applications_etl_backfill_window_end_hour }}
+TRANCHE={{ applications_etl_backfill_slice_days }}
+PROJET=enervision-etl
+REPERTOIRE={{ applications_dir }}/etl
+
+# La fenêtre enjambe minuit : autorisée à partir de FENETRE_DEBUT, et
+# jusqu'à FENETRE_FIN le lendemain. D'où le OU, et non un encadrement.
+dans_la_fenetre() {
+	# %-H et non %H : "08" serait lu comme un octal invalide par test, et
+	# le retirer du zéro à la main casse sur "00". L'hôte est un Ubuntu,
+	# sa date est celle de GNU coreutils.
+	heure=$(date +%-H)
+	[ "$heure" -ge "$FENETRE_DEBUT" ] || [ "$heure" -lt "$FENETRE_FIN" ]
+}
+
+if [ "${1:-}" = "--verifier-fenetre" ]; then
+	if [ -n "${ETL_BACKFILL_FORCE:-}" ] || dans_la_fenetre; then
+		exit 0
+	fi
+	echo "hors fenêtre calme ($FENETRE_DEBUT h → $FENETRE_FIN h) : ignoré" >&2
+	exit 1
+fi
+
+curseur="${ETL_BACKFILL_UNTIL:-{{ applications_etl_backfill_until }}}"
+reste="${ETL_BACKFILL_DAYS:-{{ applications_etl_backfill_days }}}"
+
+cd "$REPERTOIRE"
+
+# Une tranche = un conteneur NEUF, et c'est le point de tout le découpage :
+# un unique processus qui balaie deux ans garde une seule connexion, et ce
+# backend PostgreSQL accumule le catalogue de la centaine de chunks traversés
+# jusqu'à la fin du run. Ici, cgroup et connexion repartent de zéro à chaque
+# tranche.
+#
+# `docker compose run` et non `docker run` : le service porte déjà son .env
+# et ses DEUX réseaux — db_network pour lire et reposer les mesures,
+# storage_network pour publier les partitions. `--name` parce que le service
+# déclare un container_name : sans lui, le conteneur éphémère réclamerait le
+# nom du conteneur vivant et échouerait sur un conflit.
+while [ "$reste" -gt 0 ]; do
+	jours=$TRANCHE
+	[ "$reste" -lt "$TRANCHE" ] && jours=$reste
+	echo "rattrapage ETL : $jours journée(s) jusqu'au $curseur"
+	/usr/bin/docker compose --project-name "$PROJET" \
+		run --rm -T --name enervision-etl-backfill \
+		--entrypoint python etl -m etl --date "$curseur" --days "$jours"
+	reste=$((reste - jours))
+	curseur=$(date -u -d "$curseur - $jours days" +%F)
+done
+
+echo "rattrapage ETL terminé, dernière tranche jusqu'au $curseur"

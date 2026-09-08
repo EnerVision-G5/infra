@@ -5,6 +5,10 @@ services:
     image: {{ applications_image_namespace }}/{{ applications_api_image_name }}:{{ applications_api_sha }}
     container_name: enervision-api
     restart: unless-stopped
+    # Qui meurt en premier si la VM manque de mémoire, plutôt que de laisser
+    # le noyau choisir au score — c'est-à-dire souvent le plus gros, donc la
+    # base. Service en ligne : le tuer se voit immédiatement côté client.
+    oom_score_adj: -200
 
     env_file:
       - .env
@@ -35,6 +39,14 @@ services:
       # - "traefik.http.routers.enervision-api.tls.certresolver={{ traefik_certresolver }}"
       - "traefik.http.routers.enervision-api.service=enervision-api"
       - "traefik.http.services.enervision-api.loadbalancer.server.port={{ applications_api_port }}"
+
+    # Plafonds ressources : la VM 4 vCPU / 8 Go porte toute la stack. `cpus`
+    # est un plafond (somme sur l'hôte > 4), `memory` le garde-fou anti-OOM.
+    deploy:
+      resources:
+        limits:
+          memory: {{ applications_api_memory_limit }}
+          cpus: "{{ applications_api_cpu_limit }}"
 
 networks:
   proxy_network:

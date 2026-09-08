@@ -42,6 +42,15 @@ services:
       - "traefik.http.routers.grafana.service=grafana"
       - "traefik.http.services.grafana.loadbalancer.server.port={{ monitoring_grafana_port }}"
 
+    # Plafonds ressources sur une VM 4 vCPU / 8 Go partagée par toute la stack.
+    # `cpus` est un plafond (la somme sur l'hôte dépasse 4), `memory` le
+    # garde-fou anti-OOM.
+    deploy:
+      resources:
+        limits:
+          memory: {{ monitoring_grafana_memory_limit }}
+          cpus: "{{ monitoring_grafana_cpu_limit }}"
+
   prometheus:
     image: {{ monitoring_prometheus_image }}
     container_name: prometheus
@@ -66,6 +75,12 @@ services:
       timeout: 5s
       retries: 5
 
+    deploy:
+      resources:
+        limits:
+          memory: {{ monitoring_prometheus_memory_limit }}
+          cpus: "{{ monitoring_prometheus_cpu_limit }}"
+
   loki:
     image: {{ monitoring_loki_image }}
     container_name: loki
@@ -87,6 +102,12 @@ services:
       timeout: 5s
       retries: 10
 
+    deploy:
+      resources:
+        limits:
+          memory: {{ monitoring_loki_memory_limit }}
+          cpus: "{{ monitoring_loki_cpu_limit }}"
+
   promtail:
     image: {{ monitoring_promtail_image }}
     container_name: promtail
@@ -106,6 +127,12 @@ services:
     depends_on:
       - loki
 
+    deploy:
+      resources:
+        limits:
+          memory: {{ monitoring_promtail_memory_limit }}
+          cpus: "{{ monitoring_promtail_cpu_limit }}"
+
   node-exporter:
     image: {{ monitoring_node_exporter_image }}
     container_name: node-exporter
@@ -116,14 +143,31 @@ services:
       - --path.procfs=/host/proc
       - --path.sysfs=/host/sys
       - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+      # Sans ce collecteur, une unité systemd en échec n'existe pas pour
+      # Prometheus : ni un entraînement tué à son plafond, ni un drift qui
+      # annonce une dérive par son code de sortie. Ils sont pourtant la
+      # moitié de ce qu'il y a à surveiller sur cette machine.
+      - --collector.systemd
+      - --collector.systemd.unit-include=^(training|drift|collector-backfill|etl-backfill)\.service$$
 
     volumes:
       - /:/host:ro,rslave
+      # Le collecteur systemd parle au gestionnaire par sa socket privée.
+      # Sans ce montage il démarre, ne remonte aucune unité, et ne le dit
+      # qu'en DEBUG — une supervision muette qui a l'air en place.
+      # Pas de :ro : s'y connecter demande le droit d'écriture.
+      - /run/systemd/private:/run/systemd/private
 
     networks:
       - monitoring_network
 
     pid: host
+
+    deploy:
+      resources:
+        limits:
+          memory: {{ monitoring_node_exporter_memory_limit }}
+          cpus: "{{ monitoring_node_exporter_cpu_limit }}"
 
   cadvisor:
     image: {{ monitoring_cadvisor_image }}
@@ -143,6 +187,12 @@ services:
 
     networks:
       - monitoring_network
+
+    deploy:
+      resources:
+        limits:
+          memory: {{ monitoring_cadvisor_memory_limit }}
+          cpus: "{{ monitoring_cadvisor_cpu_limit }}"
 
 volumes:
   grafana_data:

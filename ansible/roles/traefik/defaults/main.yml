@@ -1,0 +1,7 @@
+---
+# Garde-fous ressources du conteneur. La VM on-premise porte toute la stack
+# (4 vCPU / 8 Go) : sans plafond, un pic d'un service peut étrangler les
+# autres. Ce sont des plafonds, pas des réservations — la somme des `cpus`
+# de tous les conteneurs peut dépasser 4.
+traefik_memory_limit: 200M
+traefik_cpu_limit: "0.5"

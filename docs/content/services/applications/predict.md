@@ -41,6 +41,38 @@ par le rôle selon `applications_collector_backfill_active` (collector activé
 | `.env` | `PREDICT_ENV`, `DATABASE_URL` (**psycopg**), `ETL_PERIOD_SECONDS` (`applications_etl_period_seconds`, 3600), clés S3 |
 | Volume | aucun (sortie sur Garage) |
 
+### Rattrapage historique
+
+La boucle du conteneur produit la fenêtre glissante
+(`applications_etl_window_days`). Refaire une fenêtre historique — après une
+correction de règle d'imputation, ou pour donner des saisons au premier
+entraînement — passe par une unité dédiée :
+
+```bash
+systemctl start etl-backfill
+journalctl -u etl-backfill -f
+```
+
+Réglages : `applications_etl_backfill_until` (dernière journée reproduite),
+`_days` (profondeur), `_slice_days` (taille d'une tranche). Surchargeables
+pour un lancement ponctuel :
+
+```bash
+systemctl set-environment ETL_BACKFILL_UNTIL=2024-12-31 ETL_BACKFILL_DAYS=90
+```
+
+**Jamais par `docker exec` dans `enervision-etl`.** Un `exec` rejoint le
+cgroup du conteneur : le rattrapage et la boucle horaire se partagent alors
+les mêmes 512 Mo, et un seul processus balayant deux ans garde une unique
+connexion PostgreSQL dont le backend accumule le catalogue de tous les chunks
+traversés. L'unité découpe en tranches, chacune dans un conteneur neuf.
+
+Deux gardes : `ExecCondition` refuse le démarrage hors de la fenêtre calme
+(`applications_etl_backfill_window_*`, 22 h → 6 h) en marquant l'unité
+**sautée** et non en échec ; le verrou `applications_jobs_lock` la sérialise
+avec `training`, `drift` et `collector-backfill`. En journée, si c'est
+assumé : `systemctl set-environment ETL_BACKFILL_FORCE=1`.
+
 ---
 
 ## training
@@ -86,6 +118,11 @@ Un déploiement ne réentraîne rien : il met à jour l'image du prochain run.
 `--allowed-hosts` liste `enervision-mlflow:5000`, `localhost:5000`,
 `127.0.0.1:5000` (+ le domaine public si la route existe) — MLflow 3 renvoie
 `403` à tout `Host` inconnu.
+
+Second contrôle, indépendant du premier : MLflow 3 valide aussi l'en-tête
+`Origin` des requêtes d'écriture, contre `MLFLOW_SERVER_CORS_ALLOWED_ORIGINS`
+(posée dans le `.env` quand la route existe). Les origines locales sont
+toujours admises — le tunnel SSH n'en dépend donc pas.
 
 **Exposition** : `applications_mlflow_expose` = `true` → route
 `mlflow.enervision.com` **avec authentification basique obligatoire**
@@ -134,6 +171,7 @@ une URI `s3://` et qu'aucune clé n'est fournie (assert sur l'intersection de
 |---|---|
 | `enervision-serving` répond `503` | MLflow injoignable, ou aucun modèle sous l'alias configuré |
 | `403` MLflow depuis training/serving | `Host` absent de `--allowed-hosts` |
+| UI MLflow affichée mais `403` sur `/ajax-api/**` | `Origin` absente de `MLFLOW_SERVER_CORS_ALLOWED_ORIGINS` (schéma compris) |
 | `training` tué prématurément | `TimeoutStartSec` — `applications_training_timeout_seconds` |
 | `collector` : `connection refused` vers la source | `applications_collector_mock_api_url` faux / source injoignable |
 | services predict : *NoCredentialsError* / bucket vide | clés S3 absentes du Vault, ou clé `garage` sans droit sur le bucket |

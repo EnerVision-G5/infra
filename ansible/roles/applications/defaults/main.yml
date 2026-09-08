@@ -69,6 +69,83 @@ applications_networks:
   - ml_network
   - monitoring_network
 
+# --------------------------------------------------------------------------
+# Garde-fous ressources par conteneur.
+#
+# La VM on-premise porte TOUTE la stack (Traefik, Garage, TimescaleDB,
+# monitoring, applications) sur 4 vCPU / 8 Go. Sans plafond, un pic de l'ETL
+# ou un entraînement peut monopoliser la VM et faire tomber la base ou l'API.
+#
+# `cpus` est un PLAFOND, pas une réservation : la somme sur tous les
+# conteneurs de l'hôte dépasse volontairement 4, le noyau arbitre la
+# contention. `memory` est le garde-fou anti-OOM (le conteneur est tué s'il
+# le dépasse) — le poser trop bas fait redémarrer le service en boucle.
+#
+# training et drift sont des traitements datés lancés par timer : leurs
+# plafonds sont plus larges (ils tournent la nuit, staggerés), mais restent
+# les premières valeurs à baisser si un OOM-kill apparaît.
+# --------------------------------------------------------------------------
+applications_front_memory_limit: 96M
+applications_front_cpu_limit: "0.25"
+
+applications_api_memory_limit: 768M
+applications_api_cpu_limit: "1.5"
+
+applications_serving_memory_limit: 1G
+applications_serving_cpu_limit: "2.0"
+
+# Registre MLflow. Trois plafonds qui se tiennent, et qu'il faut lire ensemble.
+#
+# `workers` d'abord, parce que c'est lui qui décide des deux autres. MLflow en
+# lance QUATRE par défaut, chacun chargeant l'application entière — laquelle
+# est ici l'image de training : mlflow, xgboost, scikit-learn, pandas. Mesuré
+# à froid sur cette image, juste après le démarrage :
+#
+#   1 worker  -> 1671 Mo      2 workers -> 1866 Mo      4 workers -> 2196 Mo
+#
+# soit un socle partagé d'environ 1,6 Go, puis ~195 Mo par worker de plus.
+#
+# 2 et non 4 : le registre a trois clients — training qui enregistre ses
+# versions, serving qui résout un alias au démarrage, et un exploitant qui
+# consulte l'interface par tunnel. Il n'y a aucune concurrence à absorber.
+# 2 et non 1 : une requête lente sur un artefact ne doit pas rendre le
+# registre muet pour l'entraînement qui attend derrière.
+applications_mlflow_workers: 2
+
+# 2G et non 768M. L'ancienne valeur était sous le socle du service : le
+# conteneur partait, chargeait ses imports, et se faisait tuer par l'OOM avant
+# d'avoir servi quoi que ce soit — ou repartait en boucle. Un registre qui
+# tombe, c'est serving qui ne résout plus son alias et refuse les prévisions
+# en 503, et training qui ne peut plus ouvrir de run.
+#
+# 2G laisse ~130 Mo au-dessus des 1866 Mo mesurés à deux workers. Descendre
+# sous 2G suppose de descendre à un worker d'abord, et de remesurer.
+applications_mlflow_memory_limit: 2G
+
+# Un vCPU. Le registre lit et écrit du SQLite et relaie des artefacts : il
+# n'attend rien du parallélisme, et lui en donner plus le prendrait aux
+# services qui, eux, en ont besoin.
+applications_mlflow_cpu_limit: "1.0"
+
+applications_collector_memory_limit: 384M
+applications_collector_cpu_limit: "0.5"
+
+# Rattrapage daté du collector (docker run lancé par systemd, pas compose).
+applications_collector_backfill_memory_limit: 384M
+applications_collector_backfill_cpu_limit: "1.0"
+
+applications_etl_memory_limit: 512M
+applications_etl_cpu_limit: "1.0"
+
+applications_predict_cron_memory_limit: 512M
+applications_predict_cron_cpu_limit: "0.5"
+
+applications_training_memory_limit: 3G
+applications_training_cpu_limit: "3.0"
+
+applications_drift_memory_limit: 2G
+applications_drift_cpu_limit: "2.0"
+
 # Connexion applicative à la base (construite à partir des variables du rôle
 # timescaledb ; le mot de passe vient de group_vars chiffré avec ansible-vault).
 #
@@ -93,8 +170,41 @@ applications_predict_storage_root: "data"
 # Registre déployé par ce rôle. Chaque application a son propre projet compose,
 # donc l'alias réseau du service (`mlflow`) n'est visible que dans son projet :
 # c'est le nom de conteneur qui résout d'un projet à l'autre sur ml_network.
+# Racine de l'historique de référence — les CSV par site, deux années horaires,
+# chargés une seule fois par `python -m collector.datasets`.
+#
+# Un seau SÉPARÉ de celui des partitions, et non un préfixe dedans : l'ETL
+# réécrit ses partitions à chaque run, et deux années de mesures que rien dans
+# la chaîne ne sait régénérer n'ont pas à partager un espace avec ce qui
+# s'efface. Ces fichiers ne sont ni dans le dépôt predict ni dans l'image du
+# collecteur : ils sont déposés une fois sur Garage, cf. le README de predict.
+applications_predict_datasets_root: "s3://enervision-datasets"
+
 applications_predict_mlflow_tracking_uri: >-
   http://enervision-mlflow:{{ applications_mlflow_port }}
+
+# --------------------------------------------------------------------------
+# Amorçage : jeu de variables réduit tant que la collecte est jeune.
+#
+# Une heure n'est publiée que si TOUS ses décalages existent. `lag_168h`
+# n'ayant rien à désigner avant sept jours de collecte, un déploiement neuf
+# publie des partitions vides pendant une semaine : serving n'a rien à lire,
+# et aucune erreur ne le dit.
+#
+# Vides, ces deux valeurs laissent la configuration du dépôt predict (v1,
+# décalages 1/24/168). Renseignées ENSEMBLE, elles basculent l'ETL, serving
+# et training sur un jeu réduit, sous sa propre version — le rôle refuse de
+# n'en changer qu'une, deux jeux de colonnes sous une même version donnant
+# un entraînement qui lit des lignes amputées sans qu'aucune erreur ne le
+# dise.
+#
+# Amorçage type, à retirer dès que la collecte couvre 168 h, suivi d'un
+# réentraînement sur la version rétablie :
+#   applications_predict_feature_version: "v1-amorcage"
+#   applications_predict_lag_hours: "1,24"
+# --------------------------------------------------------------------------
+applications_predict_feature_version: ""
+applications_predict_lag_hours: ""
 
 # Stockage objet Garage. Il n'y a pas d'AWS ici : Garage parle le protocole
 # S3, et les clients S3 sont tous des bibliothèques AWS. Les variables AWS_*
@@ -226,6 +336,15 @@ applications_mlflow_host: "mlflow.enervision.com"
 # et stocker le résultat dans le vault, jamais en clair dans le dépôt.
 applications_mlflow_basic_auth_users: ""
 
+# Origines admises par le registre pour les requêtes d'écriture venant d'un
+# navigateur. MLflow 3 les valide indépendamment de --allowed-hosts : sans
+# cette liste, l'interface se charge et chaque appel /ajax-api répond 403,
+# avec « Blocked cross-origin request » dans son journal. Les origines
+# locales sont toujours admises, le tunnel SSH n'a donc rien à y ajouter —
+# seule la route publique doit être déclarée.
+applications_mlflow_cors_allowed_origins: >-
+  {{ applications_public_scheme }}://{{ applications_mlflow_host }}
+
 # --------------------------------------------------------------------------
 # Serving (dépôt predict, service predict/serving) — inférence en ligne.
 # Processus long derrière Traefik : il résout un alias du registre MLflow,
@@ -336,6 +455,79 @@ applications_drift_alert_ratio: 1.5
 # La surveillance rejoue le modèle site par site sur la fenêtre mesurée. Sans
 # borne, systemd la tuerait au bout de 90 s en laissant un run MLflow ouvert.
 applications_drift_timeout_seconds: 1800
+# --------------------------------------------------------------------------
+# Verrou partagé des traitements lourds (entraînement, dérive, rattrapages).
+#
+# Ces jobs demandent 2 à 3 Go et plusieurs vCPU chacun sur une VM qui en a 8
+# et 4. Rien n'empêchait jusqu'ici l'entraînement du dimanche 03:30, qui peut
+# courir deux heures, de croiser la surveillance de dérive de 04:30. Le
+# verrou les sérialise : le second attend le premier au lieu de se battre
+# avec lui pour la mémoire.
+#
+# `flock` et non `Conflicts=` : Conflicts ARRÊTE l'unité concurrente, ce qui
+# tuerait un entraînement en cours au lieu de le laisser finir.
+# --------------------------------------------------------------------------
+applications_jobs_lock: "/run/enervision-jobs.lock"
+
+# Attente maximale du verrou. Au-delà, le job renonce plutôt que de démarrer
+# à une heure où plus personne ne l'attend ; le timer repassera.
+applications_jobs_lock_wait_seconds: 3600
+
+# Où sont déposés les scripts que les unités systemd exécutent. Hors de
+# /usr/local/bin, réservé à ce qu'un administrateur installe à la main.
+applications_jobs_script_dir: "/usr/local/sbin"
+
+# Reprise des traitements datés après un échec. Deux démarrages par
+# fenêtre : celui de l'ordonnanceur et UNE reprise. Un job tué à son
+# plafond mémoire échouerait pareil en repartant aussitôt ; un quart
+# d'heure plus tard, la machine peut avoir rendu ce qui manquait. Au-delà,
+# l'unité reste en échec : la relancer indéfiniment consommerait la VM
+# qu'elle a déjà fait tomber une fois.
+applications_jobs_restart_delay_seconds: 900
+applications_jobs_restart_attempts: 2
+applications_jobs_restart_window_seconds: 86400
+
+# --------------------------------------------------------------------------
+# Rattrapage ETL : reproduction des variables sur une fenêtre historique.
+#
+# Le pendant du rattrapage collector, et il manquait. Faute d'un chemin
+# supporté, un rattrapage se lançait par `docker exec` DANS le conteneur
+# vivant : deux traitements dans le même cgroup de 512 Mo, la boucle horaire
+# et le rattrapage se partageant le plafond, et une seule connexion à la base
+# balayant une centaine de chunks.
+#
+# Déclenché à la main (`systemctl start etl-backfill`), sans timer : refaire
+# l'histoire n'est pas une opération périodique.
+# --------------------------------------------------------------------------
+applications_etl_backfill_active: >-
+  {{ 'etl' in applications_enabled }}
+
+# Journées reproduites par défaut, et dernière journée de la fenêtre. Le
+# rattrapage remonte le temps depuis cette date.
+applications_etl_backfill_days: 730
+applications_etl_backfill_until: "2024-12-31"
+
+# Taille d'une tranche. Chaque tranche est un conteneur NEUF : son cgroup
+# repart de zéro, et sa connexion à la base aussi — c'est ce qui empêche un
+# unique backend Postgres d'accumuler le catalogue d'une centaine de chunks
+# sur toute la durée du rattrapage.
+applications_etl_backfill_slice_days: 30
+
+# Fenêtre horaire autorisée, en heure de l'hôte. Elle enjambe minuit :
+# autorisé à partir de _start_, et jusqu'à _end_ le lendemain. Hors de cette
+# fenêtre l'unité est IGNORÉE, pas en échec — `ExecCondition` la marque
+# comme sautée, ce qui distingue « pas le moment » de « ça a raté ».
+#
+# Pour un rattrapage urgent en journée, assumé comme tel :
+#   systemd-run --unit etl-backfill-force --setenv=ETL_BACKFILL_FORCE=1 #     --property=Type=oneshot /bin/systemctl start etl-backfill
+applications_etl_backfill_window_start_hour: 22
+applications_etl_backfill_window_end_hour: 6
+
+# Borne de durée du rattrapage complet. Deux ans par tranches de 30 journées
+# enchaînent des dizaines de conteneurs : 90 s (défaut systemd) couperaient
+# au milieu de la première.
+applications_etl_backfill_timeout_seconds: 21600
+
 # Vrai quand la surveillance doit exister sur l'hôte. Elle partage l'image du
 # réentraînement : sans lui, l'image n'est pas tirée et le compose qui la
 # déclare n'est pas déposé.
@@ -363,10 +555,15 @@ applications_collector_mock_api_url: "http://mock-iot:8000"
 # redemandées à la source, et une fenêtre saine ne coûte qu'une agrégation. Un
 # redéploiement sur un serveur à jour collecte donc la journée courante.
 #
-# 35 et non 30 : « il y a un mois » doit tomber DANS la fenêtre et non sur son
-# bord. La marge couvre aussi le décalage de 168 h du jeu de variables, que
-# l'ETL exige avant de publier sa première journée.
-applications_collector_catch_up_days: 35
+# 2 et non 35 : la source ne sert pas d'historique. Son /api/v1/readings ne
+# remonte qu'à 48 heures, et au-delà elle répond des mesures NULLES plutôt
+# qu'une erreur. Une fenêtre plus large ne collectait donc rien, tout en
+# interrogeant la source pour chaque journée et chaque site — et en écrivant
+# des nuls que le ON CONFLICT DO NOTHING du collecteur fige définitivement.
+#
+# L'historique d'apprentissage ne vient pas de là : il est chargé une fois
+# depuis les jeux de données de référence fournis par le formateur.
+applications_collector_catch_up_days: 2
 applications_collector_image: >-
   {{ applications_image_namespace }}/{{ applications_collector_image_name }}:{{ applications_collector_sha }}
 # Rattrapage nocturne. --days 2 : recouvre toujours la veille et l'avant-veille,

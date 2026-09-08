@@ -26,3 +26,12 @@ docs/.cache/
 # Divers
 .DS_Store
 *.log
+
+# Terraform : état et plans (contiennent la description réelle des ressources,
+# l'état vit sur Azure), cache des fournisseurs.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log

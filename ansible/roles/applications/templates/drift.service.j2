@@ -5,6 +5,14 @@ Documentation=https://github.com/EnerVision-G5/predict
 After=docker.service
 Requires=docker.service
 
+# Plan de secours : une seule reprise, et espacée. Un job tué à son
+# plafond mémoire échouera de la même façon s'il repart tout de suite ;
+# un quart d'heure plus tard, la machine peut avoir rendu ce qui manquait.
+# Au-delà, l'unité reste en échec — c'est un incident à lire, pas une
+# boucle à entretenir, et l'alerte Grafana le dit.
+StartLimitIntervalSec={{ applications_jobs_restart_window_seconds }}
+StartLimitBurst={{ applications_jobs_restart_attempts }}
+
 [Service]
 Type=oneshot
 # Même image que le réentraînement — c'est le même paquet — mais un autre
@@ -16,7 +24,9 @@ Type=oneshot
 # `run --rm` et non `up` : la surveillance est un traitement daté, elle
 # mesure et elle sort. -T parce qu'un timer n'a pas de terminal à allouer.
 WorkingDirectory={{ applications_dir }}/training
-ExecStart=/usr/bin/docker compose \
+ExecStart=/usr/bin/flock --wait {{ applications_jobs_lock_wait_seconds }} \
+  {{ applications_jobs_lock }} \
+  /usr/bin/docker compose \
   --project-name enervision-training \
   --profile jobs \
   run --rm -T drift
@@ -42,3 +52,10 @@ ExecStart=/usr/bin/docker compose \
 # Sans borne explicite, systemd tuerait le service au bout de 90 s (défaut de
 # TimeoutStartSec) en laissant un run MLflow ouvert derrière lui.
 TimeoutStartSec={{ applications_drift_timeout_seconds }}
+
+# Reprise sur échec, dans la limite posée par StartLimit* ci-dessus.
+Restart=on-failure
+RestartSec={{ applications_jobs_restart_delay_seconds }}
+# Le code 2 est un VERDICT — dérive constatée — pas une panne. Le rejouer
+# ne changerait rien à ce qu'il a mesuré, et masquerait ce qu'il annonce.
+RestartPreventExitStatus=2

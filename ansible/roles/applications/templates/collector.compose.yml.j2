@@ -13,13 +13,22 @@ services:
     # unless-stopped et non always : un arrêt volontaire de l'exploitant n'est
     # pas défait au redémarrage du démon Docker.
     restart: unless-stopped
+    # Qui meurt en premier si la VM manque de mémoire, plutôt que de laisser
+    # le noyau choisir au score — c'est-à-dire souvent le plus gros, donc la
+    # base. Boucle relancée à chaque cycle : un kill lui coûte un tick.
+    oom_score_adj: 500
     entrypoint: ["python", "-m", "collector.poller"]
 
     env_file:
       - .env
 
     networks:
+      # Couche brute, où le poller écrit les mesures de la source.
       - db_network
+      # Stockage objet. Le poller n'y touche pas, mais l'import de
+      # l'historique de référence — `docker compose exec` ou `run` sur cette
+      # même image — lit ses CSV depuis Garage, qui n'est joignable que là.
+      - storage_network
 
     # Un processus qui tourne des semaines finit par remplir le disque de la
     # VM : on borne la rotation des journaux.
@@ -29,7 +38,19 @@ services:
         max-size: "10m"
         max-file: "5"
 
+    # Plafonds ressources : la VM 4 vCPU / 8 Go porte toute la stack. `cpus`
+    # est un plafond (somme sur l'hôte > 4), `memory` le garde-fou anti-OOM.
+    deploy:
+      resources:
+        limits:
+          memory: {{ applications_collector_memory_limit }}
+          cpus: "{{ applications_collector_cpu_limit }}"
+
 networks:
   db_network:
     external: true
     name: db_network
+
+  storage_network:
+    external: true
+    name: storage_network

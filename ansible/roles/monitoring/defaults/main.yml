@@ -21,3 +21,47 @@ monitoring_grafana_port: 3000
 # idéalement chiffré avec ansible-vault). Pas de valeur par défaut pour le
 # secret volontairement.
 monitoring_grafana_admin_user: admin
+
+# Garde-fous ressources des conteneurs. La VM on-premise porte toute la stack
+# (4 vCPU / 8 Go) : ce sont des plafonds anti-contention et anti-OOM, pas des
+# réservations. La somme des `cpus` de tous les conteneurs peut dépasser 4.
+monitoring_grafana_memory_limit: 384M
+monitoring_grafana_cpu_limit: "0.75"
+
+monitoring_prometheus_memory_limit: 768M
+monitoring_prometheus_cpu_limit: "1.0"
+
+monitoring_loki_memory_limit: 384M
+monitoring_loki_cpu_limit: "0.75"
+
+monitoring_promtail_memory_limit: 128M
+monitoring_promtail_cpu_limit: "0.25"
+
+monitoring_node_exporter_memory_limit: 96M
+monitoring_node_exporter_cpu_limit: "0.25"
+
+monitoring_cadvisor_memory_limit: 256M
+monitoring_cadvisor_cpu_limit: "0.5"
+
+# --------------------------------------------------------------------------
+# Alertes Grafana, provisionnées au démarrage.
+#
+# Aucun point de contact : elles s'allument dans l'interface et ne
+# notifient personne. La VM n'a pas de relais sortant vérifié, et une
+# alerte qui échoue à partir est pire qu'une alerte qu'on sait devoir
+# aller regarder. Ajouter un webhook plus tard ne change que ce fichier.
+# --------------------------------------------------------------------------
+monitoring_alerting_enabled: true
+
+# Cadence d'évaluation. Une minute : les pannes visées se mesurent en
+# heures, évaluer plus souvent ne ferait que charger Loki.
+monitoring_alert_interval: 1m
+
+# Part de la mémoire de la VM au-delà de laquelle on alerte. 85 % et non
+# 95 : au-delà il ne reste plus de quoi démarrer un traitement daté.
+monitoring_alert_memory_percent: 85
+
+# Part de SON plafond au-delà de laquelle un conteneur alerte. mlflow tient
+# 98 % du sien en régime normal : c'est ce qu'il faut voir venir avant que
+# le cgroup ne le tue.
+monitoring_alert_container_percent: 90
