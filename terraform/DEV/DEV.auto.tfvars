@@ -1,6 +1,5 @@
-# Environnement de développement partagé : ce que les postes de dev
-# utilisent quand ils ont besoin d'Azure. Même groupe que le bootstrap.
-# subscription_id et resource_group_name sont écrits par scripts/bootstrap.sh
+# Environnement de développement partagé
+# Même groupe que le bootstrap. subscription_id et resource_group_name sont écrits par scripts/bootstrap.sh
 subscription_id     = "ca5c57dd-3aab-4628-a78c-978830d03bbd"
 resource_group_name = "rg-MCharge2024_cours-projet-eadl"
 environment         = "dev"

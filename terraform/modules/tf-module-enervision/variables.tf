@@ -1,4 +1,4 @@
-# --- Commun ---------------------------------------------------------------------
+# --- Commun
 
 variable "resource_group_name" {
   description = "Groupe de ressources existant où tout est créé."
@@ -25,7 +25,7 @@ variable "tags" {
   default = {}
 }
 
-# --- storage.tf -----------------------------------------------------------------
+# --- storage.tf
 
 variable "storage_containers" {
   description = "Conteneurs Blob du compte de stockage, tous privés."
@@ -51,7 +51,7 @@ variable "storage_public_network_access_enabled" {
   default     = true
 }
 
-# --- iam.tf ---------------------------------------------------------------------
+# --- iam.tf
 
 variable "team" {
   description = "L'équipe : courriel => { role = member | devops, object_id = objectId Entra ID (az ad user show --id <courriel> --query id -o tsv) }. Sans la personne qui tient le groupe."

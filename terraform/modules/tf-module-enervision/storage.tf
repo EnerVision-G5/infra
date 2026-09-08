@@ -1,6 +1,3 @@
-# Compte de stockage Blob, avec les réglages que la ligne de base Azure
-# attend et qu'un compte créé au portail n'a pas par défaut.
-
 resource "azurerm_storage_account" "this" {
   # Ni tiret ni majuscule, 24 caractères maximum, unique au monde.
   name                = "st${var.project}${var.environment}${random_string.suffix.result}"

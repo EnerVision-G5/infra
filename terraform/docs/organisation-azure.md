@@ -12,8 +12,7 @@ avant de commencer. Ce qui en tient lieu, et ce que l'école en donne :
 
 ## Ce que le rôle de l'école permet et interdit
 
-Relevé le 2026-09-07 sur `rg-MCharge2024_cours-projet-eadl` (rôle
-`Devops-cours-projet-eadl` + `Reader`, stratégie `Devops-cours-projet-eadl`).
+Rôle `Devops-cours-projet-eadl` + `Reader`, stratégie `Devops-cours-projet-eadl`.
 
 | Permis dans le groupe | Interdit |
 | --- | --- |
@@ -82,12 +81,3 @@ cd terraform/DEV && terraform init && terraform plan
 
 Sa ligne en moins dans `team`, une PR, un apply : Terraform retire ses
 rôles.
-
-## Si un jour l'abonnement est à vous
-
-Un compte Azure personnel ou d'entreprise (Owner de l'abonnement) lève
-tous les interdits ci-dessus : groupes Entra ID, app registrations,
-création de groupes de ressources, tous les services. Le même bootstrap
-tourne sur un groupe créé à la main ; les personnes s'invitent alors comme
-invités B2B (*Entra ID → Utilisateurs → Inviter un utilisateur externe*)
-et un groupe Entra ID par niveau remplace la liste `team`.

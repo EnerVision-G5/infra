@@ -1,9 +1,5 @@
-# Production. Idéalement dans un AUTRE groupe de ressources que DEV (celui
-# d'un coéquipier : deux comptes de stockage au plus par groupe, et une
-# production ne partage pas son périmètre avec le développement). Si le
-# groupe change : resource_group_name ici, et le coéquipier qui le tient
-# donne à l'identité CI id-enervision-github ses rôles dessus (voir README).
-# subscription_id et resource_group_name sont écrits par scripts/bootstrap.sh
+# Production
+# Même groupe que le bootstrap. subscription_id et resource_group_name sont écrits par scripts/bootstrap.sh
 subscription_id     = "ca5c57dd-3aab-4628-a78c-978830d03bbd"
 resource_group_name = "rg-MCharge2024_cours-projet-eadl"
 environment         = "prod"

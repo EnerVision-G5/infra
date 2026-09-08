@@ -1,5 +1,3 @@
-# État de l'environnement PROD. Rien de secret : des noms, écrits par
-# scripts/bootstrap.sh. Un environnement = une clé ; le compte est partagé.
 terraform {
   backend "azurerm" {
     subscription_id      = "ca5c57dd-3aab-4628-a78c-978830d03bbd"

@@ -1,7 +1,3 @@
-# Environnement PROD : ce qui existe sur Azure pour lui. Le pendant d'un
-# inventaire Ansible : un appel du module projet, avec les valeurs de
-# l'environnement. Les briques elles-mêmes sont dans modules/tf-module-enervision.
-
 module "enervision" {
   source = "../modules/tf-module-enervision"
 

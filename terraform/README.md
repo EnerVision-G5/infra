@@ -241,11 +241,3 @@ Ce que le plan gratuit GitHub ne permet pas sur un dépôt privé : les
 environnements protégés (approbation d'une seconde personne au moment de
 l'apply). La relecture est celle de la PR, la décision celle du clic ; la
 protection de branche manque, comme pour Ansible.
-
-## Aller plus loin
-
-Un scan de configuration (trivy ou checkov) dans `verify` ; une identité
-CI distincte en lecture seule pour le `plan` des PR ; fermer l'accès
-réseau public du compte (le rôle de l'école autorise les réseaux virtuels,
-pas les points de terminaison privés : à vérifier) ; un abonnement à soi
-pour `PROD`, où le module recréerait les groupes et les équipes.

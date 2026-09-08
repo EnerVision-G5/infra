@@ -1,11 +1,3 @@
-# Module projet : tout ce qu'un environnement EnerVision contient sur Azure.
-#
-# Un fichier par brique (storage.tf, iam.tf, …), et ici ce qui est commun à
-# toutes : le groupe de ressources, les noms, les étiquettes. Un
-# environnement (DEV/, PROD/…) appelle ce module une fois, avec ses valeurs ;
-# ajouter une brique au projet, c'est ajouter un fichier ici et, si elle a
-# des réglages, ses variables dans variables.tf.
-
 # Le groupe de ressources est fourni, pas créé : dans le locataire de l'école,
 # chaque étudiant en reçoit un, avec un rôle qui ne permet pas d'en créer
 # d'autres. C'est aussi la frontière des droits de la CI.
