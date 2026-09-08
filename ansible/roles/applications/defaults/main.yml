@@ -183,6 +183,29 @@ applications_predict_datasets_root: "s3://enervision-datasets"
 applications_predict_mlflow_tracking_uri: >-
   http://enervision-mlflow:{{ applications_mlflow_port }}
 
+# --------------------------------------------------------------------------
+# Amorçage : jeu de variables réduit tant que la collecte est jeune.
+#
+# Une heure n'est publiée que si TOUS ses décalages existent. `lag_168h`
+# n'ayant rien à désigner avant sept jours de collecte, un déploiement neuf
+# publie des partitions vides pendant une semaine : serving n'a rien à lire,
+# et aucune erreur ne le dit.
+#
+# Vides, ces deux valeurs laissent la configuration du dépôt predict (v1,
+# décalages 1/24/168). Renseignées ENSEMBLE, elles basculent l'ETL, serving
+# et training sur un jeu réduit, sous sa propre version — le rôle refuse de
+# n'en changer qu'une, deux jeux de colonnes sous une même version donnant
+# un entraînement qui lit des lignes amputées sans qu'aucune erreur ne le
+# dise.
+#
+# Amorçage type, à retirer dès que la collecte couvre 168 h, suivi d'un
+# réentraînement sur la version rétablie :
+#   applications_predict_feature_version: "v1-amorcage"
+#   applications_predict_lag_hours: "1,24"
+# --------------------------------------------------------------------------
+applications_predict_feature_version: ""
+applications_predict_lag_hours: ""
+
 # Stockage objet Garage. Il n'y a pas d'AWS ici : Garage parle le protocole
 # S3, et les clients S3 sont tous des bibliothèques AWS. Les variables AWS_*
 # sont donc les noms qu'elles lisent, et AWS_ENDPOINT_URL est précisément ce

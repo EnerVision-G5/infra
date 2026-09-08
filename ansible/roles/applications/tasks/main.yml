@@ -130,6 +130,24 @@
     quiet: true
   when: "'front' in applications_enabled"
 
+# Le jeu de variables et sa version ne se dissocient pas : changer les
+# décalages change les COLONNES publiées. Deux jeux de colonnes sous une même
+# version se mêleraient dans le même chemin de partitions, et l'entraînement
+# lirait un jeu dont une partie des lignes n'a pas les colonnes qu'il demande
+# — sans erreur, avec des lignes silencieusement écartées.
+- name: Vérifier que la version des variables suit les décalages
+  ansible.builtin.assert:
+    that:
+      - (applications_predict_feature_version | length > 0)
+        == (applications_predict_lag_hours | length > 0)
+    fail_msg: >-
+      applications_predict_feature_version et applications_predict_lag_hours
+      se renseignent ensemble ou pas du tout. Changer les décalages sans
+      changer la version publierait deux jeux de colonnes sous le même
+      chemin ; changer la version sans les décalages produirait une copie
+      inutile du jeu courant.
+    quiet: true
+
 - name: Vérifier qu'au moins une application est activée
   ansible.builtin.assert:
     that:
