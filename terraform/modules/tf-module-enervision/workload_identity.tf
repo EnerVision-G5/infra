@@ -39,7 +39,7 @@ locals {
   }
 }
 
-# --- Documents de l'émetteur, sur le site statique ($web) ---------------------
+# --- Documents de l'émetteur, sur le site statique ($web)
 resource "azurerm_storage_blob" "openid_configuration" {
   count = local.workload_enabled ? 1 : 0
 
@@ -60,7 +60,7 @@ resource "azurerm_storage_blob" "jwks" {
   source_content       = jsonencode(local.jwks_document)
 }
 
-# --- Une identité managée par niveau -------------------------------------------
+# --- Une identité managée par niveau
 resource "azurerm_user_assigned_identity" "workload" {
   for_each = local.workload_enabled ? var.blob_workloads : {}
 

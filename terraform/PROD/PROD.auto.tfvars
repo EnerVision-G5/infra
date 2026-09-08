@@ -29,4 +29,8 @@ blob_workloads = {
   "api-rw" = "rw"
   "api-ro" = "ro"
 }
-workload_issuer_jwks = null
+workload_issuer_jwks = {
+  kid = "prod-20260908"
+  n   = "xAbDWcuQVkOHnsH5Ov52-a1rcbx5COqGaQ0gAaYp-t-OOOeSEhvS2Efb8-KctaNaUQptfsyLyUZIF9sl-B5tl7nD-yUHxPUbWY10ht60Ds3vSHwKkDWSb9hY90VzOp8yopJtTGf8F_I0ROBW60JSyBRV21S1X5ykTwE_kw480AsYVb_F923uxSoHDXEFgEMKzWOVGF6p1TOrnOge0WF3FIid2prpgqim2UCTYjXfK7eciuLIQuFHCbf7cbrTYmwkRkg-BcEBKXoMy1btXcr37VbjpbfjJWrP3oT3IBkEd5G8XhmE9UBx14GZ8LQeR7DBTi2LX2kD1NhWtHacX6a2aw"
+  e   = "AQAB"
+}
