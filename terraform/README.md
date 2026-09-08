@@ -50,8 +50,22 @@ Deux règles :
   briques, réglées différemment.
 - **Le groupe de ressources est fourni, et c'est la frontière.** L'école
   en donne un par étudiant, sans droit d'en créer d'autres ; Terraform y
-  crée tout et ne peut rien toucher ailleurs, l'identité CI non plus. Le
-  seul geste manuel de la chaîne est le bootstrap, une fois par groupe.
+  crée tout et ne peut rien toucher ailleurs, l'identité CI non plus.
+  Deux gestes restent humains, et c'est voulu : le bootstrap, une fois
+  par groupe, et le clic qui applique.
+
+## En pratique
+
+| Je veux… | Je fais… | Qui applique |
+| --- | --- | --- |
+| Changer quelque chose (une brique, une valeur) | Une branche, une PR : le plan arrive en commentaire, relu avec le code | Après fusion, *Actions → terraform → Run workflow*, branche `develop` (`master` pour `PROD`), environnement saisi |
+| Déployer ce qui est fusionné | Rien à coder | Le même lancement manuel. **Rien ne s'applique tout seul**, ni à la fusion ni au push |
+| Ajouter un environnement | *Actions → terraform-new-env → Run workflow* (ou `scripts/new-env.sh`) : le dossier est créé et sa PR ouverte ; relire son `.auto.tfvars` | Lancement manuel après fusion |
+| Mettre un environnement dans un autre groupe de ressources | Celui qui tient le groupe lance `scripts/allow-ci.sh` dessus, puis le groupe va dans `<ENV>.auto.tfvars` par PR | idem |
+| Ajouter quelqu'un, changer son niveau, le retirer | Une ligne dans `team` du `<ENV>.auto.tfvars`, par PR | idem |
+| Ajouter une brique au projet | Un fichier dans `modules/tf-module-enervision/`, ses variables dans `variables.tf`, ses valeurs dans chaque `<ENV>.auto.tfvars` | idem, environnement par environnement |
+| Voir ce qui est déployé | `terraform plan` en local (niveau `devops`), ou le portail Azure | — |
+| Démarrer sur un nouvel abonnement ou un premier groupe | `scripts/bootstrap.sh <groupe>`, une fois | — |
 
 ## Configuration
 
@@ -199,11 +213,12 @@ concerne tous) :
 | Événement | Jobs | Ce que ça garantit |
 | --- | --- | --- |
 | pull request | `verify` (fmt, validate, tflint) puis `plan`, commenté sur la PR | Le changement est relu **avec** son effet réel sur Azure |
+| lancement manuel (*Actions → terraform → Run workflow*) | `verify`, puis `plan` et `apply` de ce plan, sur l'environnement saisi | Rien ne s'applique sans qu'une personne l'ait décidé |
+| lancement manuel (*Actions → terraform-new-env → Run workflow*) | `scripts/new-env.sh`, branche `env/<NOM>`, pull request ouverte | Un environnement se crée sans poste, et passe par la même revue |
 
 Le commentaire de plan est unique par environnement et mis à jour à chaque
 push : verdict en première ligne (rien à faire, changements, ou
 **destructions** en rouge), lien vers le run, sortie complète repliée.
-| lancement manuel (*Actions → terraform → Run workflow*) | `verify`, puis `plan` et `apply` de ce plan, sur l'environnement saisi | Rien ne s'applique sans qu'une personne l'ait décidé |
 
 **Rien ne s'applique à la fusion.** Une fois la PR fusionnée, quelqu'un
 ouvre *Actions → terraform → Run workflow*, choisit la branche `develop`
@@ -219,7 +234,8 @@ environnement. Un seul plan ou apply à la fois par environnement.
 L'identité CI est une identité managée : elle ne détient aucun secret,
 GitHub présente un jeton OIDC dont le sujet est « PR du dépôt », « branche
 develop » ou « branche master », et Azure n'en échange pas d'autre. Elle a
-les mêmes rôles que vous, sur votre seul groupe de ressources.
+les mêmes rôles que vous sur le groupe du bootstrap, et sur les seuls
+autres groupes qu'un `allow-ci.sh` lui a ouverts.
 
 Ce que le plan gratuit GitHub ne permet pas sur un dépôt privé : les
 environnements protégés (approbation d'une seconde personne au moment de
