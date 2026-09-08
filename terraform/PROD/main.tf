@@ -11,4 +11,7 @@ module "enervision" {
   storage_account_name                   = var.storage_account_name
   storage_containers                     = var.storage_containers
   storage_blob_contributor_principal_ids = var.storage_blob_contributor_principal_ids
+
+  blob_workloads       = var.blob_workloads
+  workload_issuer_jwks = var.workload_issuer_jwks
 }

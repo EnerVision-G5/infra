@@ -46,3 +46,19 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+variable "blob_workloads" {
+  description = "Identités applicatives : nom => rw | ro."
+  type        = map(string)
+  default     = {}
+}
+
+variable "workload_issuer_jwks" {
+  description = "Clé publique de l'émetteur (scripts/issuer-keygen.sh)."
+  type = object({
+    kid = string
+    n   = string
+    e   = string
+  })
+  default = null
+}

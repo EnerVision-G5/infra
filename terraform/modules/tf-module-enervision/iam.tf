@@ -66,3 +66,17 @@ resource "azurerm_role_assignment" "apps" {
   role_definition_name = "Storage Blob Data Contributor"
   principal_id         = each.value.principal_id
 }
+
+# --- Identités applicatives fédérées (workload_identity.tf)
+# Même règle que pour les personnes : rw écrit, ro lit, sur les seuls conteneurs de cet environnement.
+resource "azurerm_role_assignment" "workload" {
+  for_each = {
+    for pair in setproduct(keys(azurerm_user_assigned_identity.workload), local.env_container_ids) :
+    "${pair[0]}/${basename(pair[1])}" => { name = pair[0], scope = pair[1] }
+  }
+
+  scope                = each.value.scope
+  role_definition_name = var.blob_workloads[each.value.name] == "rw" ? "Storage Blob Data Contributor" : "Storage Blob Data Reader"
+  principal_id         = azurerm_user_assigned_identity.workload[each.value.name].principal_id
+  principal_type       = "ServicePrincipal"
+}

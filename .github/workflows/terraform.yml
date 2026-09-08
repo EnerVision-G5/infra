@@ -206,6 +206,9 @@ jobs:
             0) verdict="✅ Aucun changement : Azure correspond déjà au code." ;;
             2) if [ "${destroy:-0}" -gt 0 ]; then
                  verdict="🔴 **${destroy} ressource(s) détruite(s)** — ${summary}"
+               elif [ -z "$summary" ]; then
+                 # Code 2 sans ligne « Plan: » : seules des sorties changent.
+                 verdict="🟡 Aucune ressource ne change, seulement des sorties (outputs)."
                else
                  verdict="🟡 ${summary}"
                fi ;;
