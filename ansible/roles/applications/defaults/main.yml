@@ -313,6 +313,15 @@ applications_mlflow_host: "mlflow.enervision.com"
 # et stocker le résultat dans le vault, jamais en clair dans le dépôt.
 applications_mlflow_basic_auth_users: ""
 
+# Origines admises par le registre pour les requêtes d'écriture venant d'un
+# navigateur. MLflow 3 les valide indépendamment de --allowed-hosts : sans
+# cette liste, l'interface se charge et chaque appel /ajax-api répond 403,
+# avec « Blocked cross-origin request » dans son journal. Les origines
+# locales sont toujours admises, le tunnel SSH n'a donc rien à y ajouter —
+# seule la route publique doit être déclarée.
+applications_mlflow_cors_allowed_origins: >-
+  {{ applications_public_scheme }}://{{ applications_mlflow_host }}
+
 # --------------------------------------------------------------------------
 # Serving (dépôt predict, service predict/serving) — inférence en ligne.
 # Processus long derrière Traefik : il résout un alias du registre MLflow,

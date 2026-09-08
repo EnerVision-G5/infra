@@ -119,6 +119,11 @@ Un déploiement ne réentraîne rien : il met à jour l'image du prochain run.
 `127.0.0.1:5000` (+ le domaine public si la route existe) — MLflow 3 renvoie
 `403` à tout `Host` inconnu.
 
+Second contrôle, indépendant du premier : MLflow 3 valide aussi l'en-tête
+`Origin` des requêtes d'écriture, contre `MLFLOW_SERVER_CORS_ALLOWED_ORIGINS`
+(posée dans le `.env` quand la route existe). Les origines locales sont
+toujours admises — le tunnel SSH n'en dépend donc pas.
+
 **Exposition** : `applications_mlflow_expose` = `true` → route
 `mlflow.enervision.com` **avec authentification basique obligatoire**
 (`applications_mlflow_basic_auth_users`, format htpasswd, Vault). Le rôle
@@ -166,8 +171,7 @@ une URI `s3://` et qu'aucune clé n'est fournie (assert sur l'intersection de
 |---|---|
 | `enervision-serving` répond `503` | MLflow injoignable, ou aucun modèle sous l'alias configuré |
 | `403` MLflow depuis training/serving | `Host` absent de `--allowed-hosts` |
-| `etl-backfill` marqué *skipped* | hors fenêtre calme — `ETL_BACKFILL_FORCE=1` pour passer outre |
-| un job lourd démarre en retard | il attendait le verrou `applications_jobs_lock` tenu par un autre |
+| UI MLflow affichée mais `403` sur `/ajax-api/**` | `Origin` absente de `MLFLOW_SERVER_CORS_ALLOWED_ORIGINS` (schéma compris) |
 | `training` tué prématurément | `TimeoutStartSec` — `applications_training_timeout_seconds` |
 | `collector` : `connection refused` vers la source | `applications_collector_mock_api_url` faux / source injoignable |
 | services predict : *NoCredentialsError* / bucket vide | clés S3 absentes du Vault, ou clé `garage` sans droit sur le bucket |
