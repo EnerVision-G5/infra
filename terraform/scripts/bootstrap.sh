@@ -11,8 +11,9 @@
 # script, et un nouvel environnement n'a jamais besoin d'y repasser :
 #
 #   1. le compte de stockage du projet : sans clé partagée, versions et
-#      corbeille ; il porte l'état (conteneur tfstate) et, par Terraform, un
-#      conteneur par environnement (l'école plafonne les comptes à deux) ;
+#      corbeille, site statique ; il porte l'état (conteneur tfstate), les
+#      documents de l'émetteur de jetons et, par Terraform, un conteneur par
+#      environnement (l'école plafonne les comptes à deux) ;
 #   2. l'identité de la CI : identité managée + identifiants fédérés GitHub
 #      (OIDC, aucun secret), avec les mêmes rôles que vous sur le groupe ;
 #   3. vos propres droits de données sur les blobs (plan local, vérifs) ;
@@ -79,6 +80,12 @@ fi
 # Versions + corbeille 30 jours : un état écrasé se retrouve.
 az storage account blob-service-properties update --account-name "$state_sa" -g "$rg" \
   --enable-versioning true --enable-delete-retention true --delete-retention-days 30 --output none
+# Site statique : sert les documents publics de l'émetteur de jetons des
+# identités applicatives (workload_identity.tf), depuis le conteneur $web.
+# Indépendant de l'accès anonyme aux blobs, qui reste refusé.
+az storage blob service-properties update --account-name "$state_sa" --auth-mode login \
+  --static-website --index-document index.html --output none 2>/dev/null \
+  || echo "   (site statique : à activer après propagation des droits, relancer le script)"
 
 # --- 3. (avant 2) vos droits de données : sans clé partagée, même le rôle
 #        d'écriture du groupe ne suffit pas pour créer le conteneur --------------
