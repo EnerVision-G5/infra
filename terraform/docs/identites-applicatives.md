@@ -26,6 +26,32 @@ Reste la fédération d'identité, celle que la CI utilise déjà avec GitHub :
 Ce qu'un attaquant devrait voler : la clé privée, sur la VM. Un jeton
 intercepté vaut cinq minutes et n'est bon que pour cette identité.
 
+## Les deux clés : qui fait quoi, où va quoi
+
+Une paire de clés par environnement, générée par `issuer-keygen.sh`. Les
+deux moitiés ne servent pas à la même chose et ne vont pas au même endroit.
+
+| | Clé privée | Clé publique (JWK : `kid`, `n`, `e`) |
+| --- | --- | --- |
+| À quoi elle sert | **Signer** les jetons : prouver que c'est bien nous | **Vérifier** les signatures : Azure s'en sert pour contrôler chaque jeton reçu |
+| Qui l'utilise | l'API Python, au moment de demander un accès (`workload-token.sh` pour tester) | Entra ID, à chaque échange de jeton |
+| Où elle vit | vault Ansible → montée dans le conteneur de l'API (`WORKLOAD_KEY_FILE`) ; copie de travail dans `~/.enervision/` de celui qui l'a générée | `<ENV>.auto.tfvars` (`workload_issuer_jwks`), donc dans Git ; publiée par Terraform dans le JWKS du site statique |
+| Secret ? | **Oui.** Jamais dans Git, jamais dans Terraform ni dans l'état, jamais dans un `.env` versionné | **Non.** Versionnable, lisible par tous : elle ne permet que de vérifier, pas de signer |
+| Si elle fuit | rotation immédiate (section plus bas) : quiconque la détient peut se faire passer pour l'API | rien à faire |
+
+Et qui fait quoi, dans l'ordre :
+
+| Acteur | Fait | Avec |
+| --- | --- | --- |
+| `issuer-keygen.sh` (une personne, une fois par environnement) | crée la paire, écrit la clé privée hors du dépôt, affiche la clé publique | openssl |
+| Terraform (PR puis apply) | publie découverte + JWKS sur le site statique, crée les identités `api-rw` / `api-ro`, leur identifiant fédéré (émetteur + sujet attendus), leurs rôles sur le conteneur | la clé publique du tfvars |
+| Ansible | dépose la clé privée et le `.env` sur la VM, comme les autres secrets | le vault |
+| L'API | signe un jeton (`iss`, `sub`, `aud`, cinq minutes), l'échange contre un jeton Azure, lit ou écrit les blobs | la clé privée, `client_id`, `WORKLOAD_SUBJECT` |
+| Entra ID | lit le JWKS à l'URL de l'émetteur, vérifie la signature, l'émetteur et le sujet, rend un jeton au nom de l'identité | la clé publique publiée |
+
+Rien à retenir de plus que ça : **la privée signe et reste chez nous, la
+publique vérifie et se publie.**
+
 ## Mettre en place un environnement (une fois)
 
 ```bash
