@@ -17,6 +17,12 @@ valider ; l'hôte est configuré et les applications déployées par
 `ansible-playbook`, lancé depuis un poste de l'équipe (voir
 [Déployer](#déployer)).
 
+Le dossier [`terraform/`](terraform/README.md) est le pendant cloud, ouvert
+avec un compte de stockage Blob Azure par environnement (`DEV`, `PROD`)
+dans les groupes de ressources fournis par l'école, état distant, CI/CD dédiée
+(`terraform.yml`, plan sur PR, apply à la main depuis GitHub, OIDC sans secret). Il ne
+change rien à la cible on-premise.
+
 ## Périmètre
 
 `provision.yml` crée d'abord les réseaux Docker partagés (`docker_external_networks`),
@@ -45,6 +51,11 @@ puis applique :
 
 Un playbook invalide, un rôle non conforme ou un secret en clair fait échouer
 la PR.
+
+`.github/workflows/terraform.yml` ne se déclenche que si `terraform/` change :
+`fmt`, `validate`, `tflint` et `plan` commenté sur la PR, par environnement.
+L'`apply` ne se lance qu'à la main, depuis l'onglet Actions, sur `develop`
+(`master` pour `PROD`). Détail dans [terraform/README.md](terraform/README.md#cicd).
 
 ## Développer en local
 
