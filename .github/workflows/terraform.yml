@@ -2,11 +2,15 @@ name: terraform
 
 # CI/CD Terraform, et rien d'autre : la CI Ansible (ci.yml) ne bouge pas.
 #
-#   pull request  →  pour chaque environnement touché : fmt, validate,
-#                    tflint, puis `plan` posté en commentaire ;
-#   push          →  `plan` puis `apply` de ce plan, pour les environnements
-#                    touchés que la branche a le droit d'appliquer :
-#                    develop → tous sauf PROD ; master → PROD.
+#   pull request        →  pour chaque environnement touché : fmt, validate,
+#                          tflint, puis `plan` posté en commentaire ;
+#   lancement manuel    →  `plan` puis `apply` de ce plan, sur l'environnement
+#   (onglet Actions)       choisi. Rien ne s'applique jamais tout seul : une
+#                          fusion ne déploie pas, quelqu'un clique.
+#
+# Le lancement se fait depuis la branche qui porte l'état voulu : develop
+# pour tous les environnements sauf PROD, master pour PROD. Toute autre
+# branche est refusée (et l'identité Azure ne la reconnaîtrait pas).
 #
 # Un environnement = un dossier terraform/<ENV>/ (MAJUSCULES). Le workflow les
 # découvre seul : un nouveau dossier est pris en compte sans le déclarer ici.
@@ -21,10 +25,13 @@ on:
     paths:
       - "terraform/**"
       - ".github/workflows/terraform.yml"
-  push:
-    branches: [develop, master]
-    paths:
-      - "terraform/**"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environnement à appliquer (nom du dossier : POC, PROD…)"
+        required: true
+        default: "POC"
+        type: string
 
 permissions:
   contents: read
@@ -55,34 +62,41 @@ jobs:
       - name: Détecter
         id: detect
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          EVENT: ${{ github.event_name }}
+          WANTED: ${{ inputs.environment }}
+          BASE: ${{ github.event.pull_request.base.sha }}
           REF: ${{ github.ref }}
         run: |
           set -euo pipefail
           all="$(cd terraform && ls -d */ | tr -d / | grep -E '^[A-Z0-9]+$' || true)"
 
-          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
-            base="$(git rev-parse HEAD~1)"
-          else
-            base="$BASE"
-          fi
-          changed="$(git diff --name-only "$base" HEAD -- terraform/ .github/workflows/terraform.yml)"
-
-          if printf '%s\n' "$changed" | grep -qE '^(terraform/modules/|\.github/workflows/terraform\.yml$)'; then
-            envs="$all"
-          else
-            envs="$(printf '%s\n' "$changed" | sed -nE 's|^terraform/([A-Z0-9]+)/.*|\1|p' | sort -u)"
-          fi
-
-          # Règle d'application : PROD depuis master, le reste depuis develop.
-          apply=""
-          for e in $envs; do
-            case "$e:$REF" in
-              PROD:refs/heads/master) apply="$apply $e" ;;
-              PROD:*) ;;
-              *:refs/heads/develop) apply="$apply $e" ;;
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            # Lancement manuel : un seul environnement, celui demandé, et
+            # seulement depuis la branche qui a le droit de l'appliquer.
+            printf '%s\n' "$all" | grep -qx "$WANTED" \
+              || { echo "::error::Environnement inconnu : $WANTED (dossiers : $(echo $all))"; exit 1; }
+            case "$WANTED:$REF" in
+              PROD:refs/heads/master) ;;
+              PROD:*) echo "::error::PROD ne s'applique que depuis master (ici $REF)"; exit 1 ;;
+              *:refs/heads/develop) ;;
+              *) echo "::error::$WANTED ne s'applique que depuis develop (ici $REF)"; exit 1 ;;
             esac
-          done
+            envs="$WANTED"; apply="$WANTED"
+          else
+            # Pull request : les environnements touchés par le diff.
+            if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+              base="$(git rev-parse HEAD~1)"
+            else
+              base="$BASE"
+            fi
+            changed="$(git diff --name-only "$base" HEAD -- terraform/ .github/workflows/terraform.yml)"
+            if printf '%s\n' "$changed" | grep -qE '^(terraform/modules/|\.github/workflows/terraform\.yml$)'; then
+              envs="$all"
+            else
+              envs="$(printf '%s\n' "$changed" | sed -nE 's|^terraform/([A-Z0-9]+)/.*|\1|p' | sort -u)"
+            fi
+            apply=""
+          fi
 
           to_json() { printf '%s\n' "$@" | grep . | jq -R . | jq -sc .; }
           # shellcheck disable=SC2086
@@ -199,7 +213,7 @@ jobs:
               '```',
               '</details>',
               '',
-              `_Commit ${context.sha.slice(0, 7)} — appliqué par la CI après fusion (develop, ou master pour PROD)._`,
+              `_Commit ${context.sha.slice(0, 7)} — rien ne s'applique à la fusion : Actions → terraform → Run workflow, depuis develop (master pour PROD)._`,
             ].join('\n');
             await github.rest.issues.createComment({
               ...context.repo,
@@ -210,7 +224,7 @@ jobs:
   apply:
     name: Apply ${{ matrix.env }}
     needs: [envs, verify]
-    if: github.event_name == 'push' && needs.envs.outputs.apply != '[]'
+    if: github.event_name == 'workflow_dispatch' && needs.envs.outputs.apply != '[]'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
