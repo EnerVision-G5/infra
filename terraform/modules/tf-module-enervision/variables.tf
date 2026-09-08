@@ -65,3 +65,26 @@ variable "storage_blob_contributor_principal_ids" {
   type        = list(string)
   default     = []
 }
+
+# --- workload_identity.tf
+
+variable "blob_workloads" {
+  description = "Identités applicatives de l'environnement : nom => niveau (rw : lit et écrit les blobs de l'environnement ; ro : lit). Une par niveau suffit, les API d'un même niveau partagent la clé."
+  type        = map(string)
+  default     = {}
+
+  validation {
+    condition     = alltrue([for lvl in values(var.blob_workloads) : contains(["rw", "ro"], lvl)])
+    error_message = "blob_workloads : niveau rw ou ro."
+  }
+}
+
+variable "workload_issuer_jwks" {
+  description = "Clé PUBLIQUE de l'émetteur de l'environnement (scripts/issuer-keygen.sh) : kid, n, e. Null : aucune identité applicative."
+  type = object({
+    kid = string
+    n   = string
+    e   = string
+  })
+  default = null
+}
