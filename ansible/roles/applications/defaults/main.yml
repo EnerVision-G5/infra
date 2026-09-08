@@ -170,6 +170,16 @@ applications_predict_storage_root: "data"
 # Registre déployé par ce rôle. Chaque application a son propre projet compose,
 # donc l'alias réseau du service (`mlflow`) n'est visible que dans son projet :
 # c'est le nom de conteneur qui résout d'un projet à l'autre sur ml_network.
+# Racine de l'historique de référence — les CSV par site, deux années horaires,
+# chargés une seule fois par `python -m collector.datasets`.
+#
+# Un seau SÉPARÉ de celui des partitions, et non un préfixe dedans : l'ETL
+# réécrit ses partitions à chaque run, et deux années de mesures que rien dans
+# la chaîne ne sait régénérer n'ont pas à partager un espace avec ce qui
+# s'efface. Ces fichiers ne sont ni dans le dépôt predict ni dans l'image du
+# collecteur : ils sont déposés une fois sur Garage, cf. le README de predict.
+applications_predict_datasets_root: "s3://enervision-datasets"
+
 applications_predict_mlflow_tracking_uri: >-
   http://enervision-mlflow:{{ applications_mlflow_port }}
 
