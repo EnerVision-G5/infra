@@ -108,9 +108,21 @@ fed_cred() { # fed_cred <nom> <sujet>
       --issuer "https://token.actions.githubusercontent.com" --subject "$2" \
       --audiences "api://AzureADTokenExchange" --output none
 }
-fed_cred "github-pull-request" "repo:${github_repo}:pull_request"
+# Le sujet présenté par GitHub porte les identifiants numériques du
+# propriétaire et du dépôt (repo:ORG@id/DEPOT@id:…), qui survivent à un
+# renommage. Sans `gh`, repli sur la forme courte, qu'Azure ne reconnaît
+# plus : le plan de la PR échouerait alors sur AADSTS700213.
+if command -v gh >/dev/null && gh auth status >/dev/null 2>&1; then
+  owner_id="$(gh api "repos/${github_repo}" --jq '.owner.id')"
+  repo_id="$(gh api "repos/${github_repo}" --jq '.id')"
+  subject_prefix="repo:${github_repo%%/*}@${owner_id}/${github_repo##*/}@${repo_id}"
+else
+  echo "gh absent : sujets OIDC sans identifiants numériques, à corriger à la main" >&2
+  subject_prefix="repo:${github_repo}"
+fi
+fed_cred "github-pull-request" "${subject_prefix}:pull_request"
 for branch in $apply_branches; do
-  fed_cred "github-branch-${branch}" "repo:${github_repo}:ref:refs/heads/${branch}"
+  fed_cred "github-branch-${branch}" "${subject_prefix}:ref:refs/heads/${branch}"
 done
 
 # Mêmes rôles que vous sur le groupe, plus la lecture et l'état.
