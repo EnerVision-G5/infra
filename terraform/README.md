@@ -30,11 +30,10 @@ terraform/
 │       ├── variables.tf        commun, puis une section par brique
 │       ├── outputs.tf
 │       ├── storage.tf          compte Blob durci + conteneurs
-│       └── iam.tf              droits d'identités applicatives sur le compte
+│       └── iam.tf              droits de l'équipe sur le groupe, d'identités sur le compte
 ├── scripts/
 │   ├── bootstrap.sh            une fois par groupe de ressources : état, identité CI
-│   ├── new-env.sh              nouvel environnement à partir d'un existant
-│   └── grant.sh                donner ses droits à un coéquipier
+│   └── new-env.sh              nouvel environnement à partir d'un existant
 ├── docs/organisation-azure.md  ce que l'école donne et interdit, l'équipe, les droits
 └── .tflint.hcl
 ```
@@ -85,12 +84,30 @@ bash terraform/scripts/bootstrap.sh rg-MCharge2024_cours-projet-eadl
 Le script crée le compte d'état, l'identité managée de la CI avec ses
 identifiants fédérés GitHub et les mêmes rôles que vous sur le groupe,
 pousse les deux secrets GitHub, et écrit abonnement, groupe et compte
-d'état dans `POC/POC.auto.tfvars` et `POC/POC.backend.tf`. Puis, une
-commande par coéquipier :
+d'état dans `POC/POC.auto.tfvars` et `POC/POC.backend.tf`.
+
+## L'équipe
+
+Les droits des coéquipiers sont dans le code, pas au portail : une entrée
+par personne dans `team_members` de `POC/POC.auto.tfvars`, avec son
+objectId Entra ID :
 
 ```bash
-bash terraform/scripts/grant.sh rg-MCharge2024_cours-projet-eadl prenom.nom@campus-eni.fr
+az ad user show --id prenom.nom@campus-eni.fr --query id -o tsv
 ```
+
+Chacun reçoit sur le groupe les rôles de `team_roles` : `Reader`, le rôle
+`Devops-cours-projet-eadl` de l'école (le « rôle devops », celui que vous
+tenez), et `Storage Blob Data Contributor` pour les blobs, état Terraform
+compris. Ajouter quelqu'un est donc une PR, relue avec son plan, appliquée
+par le lancement manuel ; retirer quelqu'un, la ligne en moins.
+
+Deux limites du locataire de l'école : pas de groupe Entra ID (d'où une
+ligne par personne), et pas de définition de rôle possible. Un rôle « tous
+droits » serait `Owner` sur le groupe, que le rôle de l'école permettrait
+d'attribuer, mais qui contournerait ce qu'elle a voulu donner : le rôle
+Devops sur mesure est le bon. La personne qui tient le groupe n'est pas dans
+la liste, ses droits viennent de l'école et du bootstrap.
 
 ## Travailler
 
@@ -114,8 +131,8 @@ az storage blob list   --auth-mode login --account-name "$sa" -c poc -o table
 ```
 
 `AuthorizationPermissionMismatch` = rôle *Storage Blob Data Contributor*
-absent sur le groupe (bootstrap pour vous, `grant.sh` pour les autres ;
-une à deux minutes de propagation). Un `RequestDisallowedByPolicy` au plan
+absent sur le groupe (bootstrap pour vous, `team_members` pour les autres ;
+une à deux minutes de propagation après l'apply). Un `RequestDisallowedByPolicy` au plan
 ou à l'apply cite la stratégie de l'école en cause : région, étiquette
 `user`, SKU, ou nombre de comptes.
 
@@ -133,13 +150,12 @@ planifie ; après fusion, l'apply se lance à la main (voir CI/CD).
 
 ## Scripts
 
-Trois scripts, tous idempotents : relancer ne casse rien, complète ce qui
-manque. Chacun explique en tête ses étapes et ses réglages.
+Deux scripts, tous deux idempotents : relancer ne casse rien, complète ce
+qui manque. Chacun explique en tête ses étapes et ses réglages.
 
 | Script | Quand | Ce qu'il fait |
 | --- | --- | --- |
 | `bootstrap.sh <groupe>` | une fois par groupe de ressources, par celui qui le tient | Ce que Terraform ne peut pas créer lui-même : le compte d'état (sans clé, versions, corbeille) et son conteneur `tfstate` ; l'identité managée de la CI, ses identifiants fédérés GitHub et les mêmes rôles que vous sur le groupe ; votre accès aux blobs ; les deux secrets GitHub ; abonnement, groupe et compte d'état écrits dans les `<ENV>.auto.tfvars` / `<ENV>.backend.tf` encore vierges |
-| `grant.sh <groupe> <courriel>` | une fois par coéquipier | Vos rôles d'écriture, la lecture et l'accès aux blobs (état compris) donnés à la personne sur le groupe |
 | `new-env.sh <SRC> <ENV>` | par nouvel environnement | Copie le dossier d'un environnement, renomme ses fichiers, change la clé d'état et le nom. Ne touche pas à Azure |
 
 ## CI/CD

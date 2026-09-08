@@ -41,16 +41,19 @@ stockage du POC coûte quelques centimes par mois.
 
 ## 2. Donner l'accès à l'équipe
 
-Tout le monde existe déjà dans le locataire. Une commande par personne :
+Tout le monde existe déjà dans le locataire. Les droits sont dans le code :
+une entrée par personne dans `team_members` de `terraform/POC/POC.auto.tfvars`,
+avec son objectId :
 
 ```bash
-bash terraform/scripts/grant.sh rg-MCharge2024_cours-projet-eadl prenom.nom@campus-eni.fr
+az ad user show --id prenom.nom@campus-eni.fr --query id -o tsv
 ```
 
-Le coéquipier reçoit vos rôles d'écriture, la lecture, et l'accès aux
-blobs, état Terraform compris. Il peut alors faire `terraform plan` en
-local, lire et écrire les blobs, et relire les PR avec le plan sous les
-yeux. Il ne peut rien hors du groupe, comme vous.
+Une PR, son plan montre les attributions de rôle, le lancement manuel les
+applique. Le coéquipier reçoit le rôle Devops de l'école, la lecture, et
+l'accès aux blobs, état Terraform compris. Il peut alors faire
+`terraform plan` en local, lire et écrire les blobs, et relire les PR avec
+le plan sous les yeux. Il ne peut rien hors du groupe, comme vous.
 
 ## 3. Qui a quoi
 
@@ -58,13 +61,13 @@ yeux. Il ne peut rien hors du groupe, comme vous.
 | --- | --- | --- | --- |
 | Vous | `Devops-cours-projet-eadl`, `Reader` | votre groupe | l'école |
 | Vous | `Storage Blob Data Contributor` | votre groupe | `bootstrap.sh` |
-| Coéquipier | les mêmes trois | votre groupe | `grant.sh` |
+| Coéquipier | les mêmes trois | votre groupe | Terraform (`iam.tf`, liste `team_members`) |
 | Identité CI `id-enervision-github` | les mêmes trois | votre groupe | `bootstrap.sh` |
 | Identités applicatives (plus tard) | `Storage Blob Data Contributor` | le compte de l'environnement | Terraform (`iam.tf`) |
 
 ## 4. Vérifier
 
-Un coéquipier, une à deux minutes après `grant.sh` :
+Un coéquipier, une à deux minutes après l'apply :
 
 ```bash
 az login --tenant 7f4f3591-5f6c-4f7b-a1bd-0a2dd8831218
@@ -74,9 +77,8 @@ cd terraform/POC && terraform init && terraform plan
 
 ## 5. Quand quelqu'un part
 
-```bash
-az role assignment delete --assignee prenom.nom@campus-eni.fr --resource-group rg-MCharge2024_cours-projet-eadl
-```
+Sa ligne en moins dans `team_members`, une PR, un apply : Terraform retire
+les trois rôles.
 
 ## Si un jour l'abonnement est à vous
 
@@ -85,4 +87,4 @@ tous les interdits ci-dessus : groupes Entra ID, app registrations,
 création de groupes de ressources, tous les services. Le même bootstrap
 tourne sur un groupe créé à la main ; les personnes s'invitent alors comme
 invités B2B (*Entra ID → Utilisateurs → Inviter un utilisateur externe*)
-et un groupe Entra ID remplace `grant.sh`.
+et un groupe Entra ID remplace la liste `team_members`.

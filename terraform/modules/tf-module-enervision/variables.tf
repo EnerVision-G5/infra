@@ -53,6 +53,18 @@ variable "storage_public_network_access_enabled" {
 
 # --- iam.tf ---------------------------------------------------------------------
 
+variable "team_members" {
+  description = "Coéquipiers : nom lisible => objectId Entra ID (az ad user show --id <courriel> --query id -o tsv). Sans la personne qui tient le groupe."
+  type        = map(string)
+  default     = {}
+}
+
+variable "team_roles" {
+  description = "Rôles donnés à chaque coéquipier sur le groupe de ressources."
+  type        = list(string)
+  default     = ["Reader", "Devops-cours-projet-eadl", "Storage Blob Data Contributor"]
+}
+
 variable "storage_blob_contributor_principal_ids" {
   description = "Identités (objectId) autorisées à lire et écrire les blobs du compte : applications, identités managées. Les personnes reçoivent leurs droits au niveau du groupe, par scripts/grant.sh."
   type        = list(string)

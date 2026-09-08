@@ -157,4 +157,4 @@ command -v terraform >/dev/null && terraform fmt -recursive "$tf_root" >/dev/nul
 
 say "Terminé. Suite :"
 echo "  cd terraform/POC && terraform init && terraform plan"
-echo "  bash terraform/scripts/grant.sh $rg <courriel>   # une fois par coéquipier"
+echo "  coéquipiers : team_members dans POC/POC.auto.tfvars (az ad user show --id <courriel> --query id -o tsv)"

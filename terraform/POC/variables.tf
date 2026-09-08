@@ -18,6 +18,12 @@ variable "project" {
   default = "enervision"
 }
 
+variable "team_members" {
+  description = "Coéquipiers : nom => objectId Entra ID."
+  type        = map(string)
+  default     = {}
+}
+
 variable "storage_containers" {
   type    = list(string)
   default = []
