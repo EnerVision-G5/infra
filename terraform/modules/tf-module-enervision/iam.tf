@@ -3,10 +3,10 @@
 # CI. Ajouter quelqu'un, c'est une ligne dans <ENV>.auto.tfvars.
 
 # --- L'équipe, sur le groupe de ressources ---------------------------------------
-# Les coéquipiers reçoivent les rôles de var.team_roles : par défaut ceux
-# que l'école donne à l'étudiant qui tient le groupe (son rôle « Devops »
-# sur mesure, la lecture), plus l'accès aux blobs, état Terraform compris,
-# ce que le rôle Devops ne couvre pas (plan de données).
+# Deux niveaux, comme viewer / editor sur un projet GCP : `member` voit tout
+# et lit les blobs ; `devops` a le rôle Devops sur mesure de l'école (celui
+# de l'étudiant qui tient le groupe) et écrit les blobs, état Terraform
+# compris. La correspondance niveau → rôles Azure est dans team_role_bundles.
 #
 # Le locataire de l'école n'autorise pas les groupes Entra ID : les droits
 # vont donc à chaque personne, par son objectId. La personne qui tient le
@@ -14,13 +14,16 @@
 # bootstrap, Terraform refuserait de les recréer.
 resource "azurerm_role_assignment" "team" {
   for_each = {
-    for pair in setproduct(keys(var.team_members), var.team_roles) :
-    "${pair[0]}/${pair[1]}" => { principal_id = var.team_members[pair[0]], role = pair[1] }
+    for pair in flatten([
+      for email, m in var.team : [
+        for role in var.team_role_bundles[m.role] : { email = email, object_id = m.object_id, role = role }
+      ]
+    ]) : "${pair.email}/${pair.role}" => pair
   }
 
   scope                = data.azurerm_resource_group.this.id
   role_definition_name = each.value.role
-  principal_id         = each.value.principal_id
+  principal_id         = each.value.object_id
   principal_type       = "User"
 }
 

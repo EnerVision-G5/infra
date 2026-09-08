@@ -53,16 +53,27 @@ variable "storage_public_network_access_enabled" {
 
 # --- iam.tf ---------------------------------------------------------------------
 
-variable "team_members" {
-  description = "Coéquipiers : nom lisible => objectId Entra ID (az ad user show --id <courriel> --query id -o tsv). Sans la personne qui tient le groupe."
-  type        = map(string)
-  default     = {}
+variable "team" {
+  description = "L'équipe : courriel => { role = member | devops, object_id = objectId Entra ID (az ad user show --id <courriel> --query id -o tsv) }. Sans la personne qui tient le groupe."
+  type = map(object({
+    role      = string
+    object_id = string
+  }))
+  default = {}
+
+  validation {
+    condition     = alltrue([for m in values(var.team) : contains(["member", "devops"], m.role)])
+    error_message = "team : role doit valoir member ou devops."
+  }
 }
 
-variable "team_roles" {
-  description = "Rôles donnés à chaque coéquipier sur le groupe de ressources."
-  type        = list(string)
-  default     = ["Reader", "Devops-cours-projet-eadl", "Storage Blob Data Contributor"]
+variable "team_role_bundles" {
+  description = "Rôles Azure derrière chaque niveau : member voit tout et lit les blobs ; devops a le rôle Devops de l'école et écrit les blobs, état Terraform compris."
+  type        = map(list(string))
+  default = {
+    member = ["Reader", "Storage Blob Data Reader"]
+    devops = ["Reader", "Devops-cours-projet-eadl", "Storage Blob Data Contributor"]
+  }
 }
 
 variable "storage_blob_contributor_principal_ids" {

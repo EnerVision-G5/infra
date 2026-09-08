@@ -18,10 +18,13 @@ variable "project" {
   default = "enervision"
 }
 
-variable "team_members" {
-  description = "Coéquipiers : nom => objectId Entra ID."
-  type        = map(string)
-  default     = {}
+variable "team" {
+  description = "Courriel => { role = member | devops, object_id }."
+  type = map(object({
+    role      = string
+    object_id = string
+  }))
+  default = {}
 }
 
 variable "storage_containers" {

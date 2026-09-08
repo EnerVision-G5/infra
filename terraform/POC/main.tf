@@ -10,7 +10,7 @@ module "enervision" {
   environment         = var.environment
   tags                = var.tags
 
-  team_members = var.team_members
+  team = var.team
 
   storage_containers                     = var.storage_containers
   storage_blob_contributor_principal_ids = var.storage_blob_contributor_principal_ids

@@ -41,19 +41,21 @@ stockage du POC coûte quelques centimes par mois.
 
 ## 2. Donner l'accès à l'équipe
 
-Tout le monde existe déjà dans le locataire. Les droits sont dans le code :
-une entrée par personne dans `team_members` de `terraform/POC/POC.auto.tfvars`,
-avec son objectId :
+Comme sur un projet GCP : chacun garde son compte (campus), reçoit un
+niveau sur le groupe de ressources, et le voit dans le portail. Les droits
+sont dans le code, dans `team` de `terraform/POC/POC.auto.tfvars` : une
+ligne par personne, son courriel, son niveau (`member` voit et lit,
+`devops` fait tout ce que vous faites) et son objectId :
 
 ```bash
 az ad user show --id prenom.nom@campus-eni.fr --query id -o tsv
 ```
 
 Une PR, son plan montre les attributions de rôle, le lancement manuel les
-applique. Le coéquipier reçoit le rôle Devops de l'école, la lecture, et
-l'accès aux blobs, état Terraform compris. Il peut alors faire
-`terraform plan` en local, lire et écrire les blobs, et relire les PR avec
-le plan sous les yeux. Il ne peut rien hors du groupe, comme vous.
+applique. Un `member` peut relire les PR avec le plan sous les yeux et
+lire les blobs ; un `devops` peut en plus faire `terraform plan` en local,
+écrire les blobs, créer des ressources. Ni l'un ni l'autre ne peut rien
+hors du groupe, comme vous.
 
 ## 3. Qui a quoi
 
@@ -61,7 +63,8 @@ le plan sous les yeux. Il ne peut rien hors du groupe, comme vous.
 | --- | --- | --- | --- |
 | Vous | `Devops-cours-projet-eadl`, `Reader` | votre groupe | l'école |
 | Vous | `Storage Blob Data Contributor` | votre groupe | `bootstrap.sh` |
-| Coéquipier | les mêmes trois | votre groupe | Terraform (`iam.tf`, liste `team_members`) |
+| Coéquipier `member` | `Reader`, `Storage Blob Data Reader` | votre groupe | Terraform (`iam.tf`, liste `team`) |
+| Coéquipier `devops` | `Reader`, `Devops-cours-projet-eadl`, `Storage Blob Data Contributor` | votre groupe | Terraform (`iam.tf`, liste `team`) |
 | Identité CI `id-enervision-github` | les mêmes trois | votre groupe | `bootstrap.sh` |
 | Identités applicatives (plus tard) | `Storage Blob Data Contributor` | le compte de l'environnement | Terraform (`iam.tf`) |
 
@@ -77,8 +80,8 @@ cd terraform/POC && terraform init && terraform plan
 
 ## 5. Quand quelqu'un part
 
-Sa ligne en moins dans `team_members`, une PR, un apply : Terraform retire
-les trois rôles.
+Sa ligne en moins dans `team`, une PR, un apply : Terraform retire ses
+rôles.
 
 ## Si un jour l'abonnement est à vous
 
@@ -87,4 +90,4 @@ tous les interdits ci-dessus : groupes Entra ID, app registrations,
 création de groupes de ressources, tous les services. Le même bootstrap
 tourne sur un groupe créé à la main ; les personnes s'invitent alors comme
 invités B2B (*Entra ID → Utilisateurs → Inviter un utilisateur externe*)
-et un groupe Entra ID remplace la liste `team_members`.
+et un groupe Entra ID par niveau remplace la liste `team`.

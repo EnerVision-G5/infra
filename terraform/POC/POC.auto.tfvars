@@ -5,12 +5,14 @@ subscription_id     = "ca5c57dd-3aab-4628-a78c-978830d03bbd"
 resource_group_name = "rg-MCharge2024_cours-projet-eadl"
 environment         = "poc"
 
-# Coéquipiers : nom lisible => objectId Entra ID, obtenu par
-#   az ad user show --id prenom.nom@campus-eni.fr --query id -o tsv
-# Ils reçoivent Reader, Devops-cours-projet-eadl et Storage Blob Data
-# Contributor sur le groupe. Pas la personne qui tient le groupe.
-team_members = {
-  # "prenom-nom" = "00000000-0000-0000-0000-000000000000"
+# L'équipe, comme les membres d'un projet GCP. Deux niveaux :
+#   member : voit tout le groupe, lit les blobs ;
+#   devops : rôle Devops de l'école, écrit les blobs (état Terraform compris).
+# object_id : az ad user show --id <courriel> --query id -o tsv
+# Pas la personne qui tient le groupe (ses droits viennent de l'école).
+team = {
+  # "prenom.nom@campus-eni.fr" = { role = "devops", object_id = "00000000-0000-0000-0000-000000000000" }
+  # "autre.nom@campus-eni.fr"  = { role = "member", object_id = "00000000-0000-0000-0000-000000000000" }
 }
 
 storage_containers = ["poc"]

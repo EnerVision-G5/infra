@@ -88,26 +88,41 @@ d'état dans `POC/POC.auto.tfvars` et `POC/POC.backend.tf`.
 
 ## L'équipe
 
-Les droits des coéquipiers sont dans le code, pas au portail : une entrée
-par personne dans `team_members` de `POC/POC.auto.tfvars`, avec son
-objectId Entra ID :
+Même logique qu'un projet GCP : le groupe de ressources est le projet, les
+gens s'y voient donner un niveau, et se connectent avec leur propre compte
+(campus) pour le voir dans le portail. Deux niveaux, dans `team` de
+`POC/POC.auto.tfvars` :
+
+| Niveau | Comme sur GCP | Rôles Azure posés sur le groupe |
+| --- | --- | --- |
+| `member` | viewer | `Reader`, `Storage Blob Data Reader` : voit tout, lit les blobs |
+| `devops` | editor | `Reader`, `Devops-cours-projet-eadl` (le rôle de l'école, celui que vous tenez), `Storage Blob Data Contributor` : crée, modifie, écrit les blobs, état Terraform compris |
+
+Une entrée par personne, clé = courriel, avec son objectId Entra ID (le
+courriel peut changer, l'identifiant non, et la CI n'a pas le droit
+d'interroger l'annuaire) :
 
 ```bash
 az ad user show --id prenom.nom@campus-eni.fr --query id -o tsv
 ```
 
-Chacun reçoit sur le groupe les rôles de `team_roles` : `Reader`, le rôle
-`Devops-cours-projet-eadl` de l'école (le « rôle devops », celui que vous
-tenez), et `Storage Blob Data Contributor` pour les blobs, état Terraform
-compris. Ajouter quelqu'un est donc une PR, relue avec son plan, appliquée
-par le lancement manuel ; retirer quelqu'un, la ligne en moins.
+```hcl
+team = {
+  "prenom.nom@campus-eni.fr" = { role = "devops", object_id = "…" }
+  "autre.nom@campus-eni.fr"  = { role = "member", object_id = "…" }
+}
+```
 
-Deux limites du locataire de l'école : pas de groupe Entra ID (d'où une
-ligne par personne), et pas de définition de rôle possible. Un rôle « tous
+Ajouter, changer de niveau ou retirer quelqu'un est une PR, dont le plan
+montre les attributions de rôle, puis un lancement manuel. La personne qui
+tient le groupe n'est pas dans la liste : ses droits viennent de l'école
+et du bootstrap.
+
+Ce que le locataire de l'école ne permet pas : les groupes Entra ID (d'où
+une ligne par personne) et la définition de rôles. Un niveau « tous
 droits » serait `Owner` sur le groupe, que le rôle de l'école permettrait
-d'attribuer, mais qui contournerait ce qu'elle a voulu donner : le rôle
-Devops sur mesure est le bon. La personne qui tient le groupe n'est pas dans
-la liste, ses droits viennent de l'école et du bootstrap.
+techniquement d'attribuer, mais qui contournerait ce qu'elle a voulu
+donner ; `devops` s'arrête donc au rôle Devops sur mesure.
 
 ## Travailler
 
@@ -131,7 +146,7 @@ az storage blob list   --auth-mode login --account-name "$sa" -c poc -o table
 ```
 
 `AuthorizationPermissionMismatch` = rôle *Storage Blob Data Contributor*
-absent sur le groupe (bootstrap pour vous, `team_members` pour les autres ;
+absent sur le groupe (bootstrap pour vous, `team` pour les autres ;
 une à deux minutes de propagation après l'apply). Un `RequestDisallowedByPolicy` au plan
 ou à l'apply cite la stratégie de l'école en cause : région, étiquette
 `user`, SKU, ou nombre de comptes.
