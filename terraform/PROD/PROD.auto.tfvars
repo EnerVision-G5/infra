@@ -8,9 +8,14 @@ environment         = "prod"
 # devops : rôle Devops de l'école, écrit les blobs (état Terraform compris)
 # object_id : az ad user show --id "prenom.nom@campus-eni.fr" --query id -o tsv
 # Pas la personne qui tient le groupe (ses droits viennent de l'école)
+# Rôles de groupe et accès à l'état : posés par DEV, pas ici. Cette liste
+# ne décide que de l'accès aux blobs de prod-data.
+project_roles = false
+
 team = {
-  # "prenom.nom@campus-eni.fr" = { role = "devops", object_id = "00000000-0000-0000-0000-000000000000" }
-  # "autre.nom@campus-eni.fr"  = { role = "member", object_id = "00000000-0000-0000-0000-000000000000" }
+  "maxence.lemoine2024@campus-eni.fr" = { role = "devops", object_id = "ffaa1e68-ece5-4b8c-a5dd-d3ad9b6ac484" },
+  "paul.laine2024@campus-eni.fr"      = { role = "member", object_id = "49ccb8cd-ba48-401f-96f7-707112a52d44" },
+  "landry.guillet2023@campus-eni.fr"  = { role = "member", object_id = "ac9418af-bec4-48a1-a701-6ad85e7fca5e" }
 }
 
 # Compte du projet (bootstrap) ; conteneurs préfixés : prod-data

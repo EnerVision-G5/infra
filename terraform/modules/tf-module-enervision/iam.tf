@@ -23,12 +23,14 @@ locals {
   }
   team_blob_scopes = {
     member = local.env_container_ids
-    devops = concat(local.env_container_ids, [local.state_container_id])
+    devops = concat(local.env_container_ids, var.project_roles ? [local.state_container_id] : [])
   }
 
+  # Rôles de groupe et état : une seule attribution possible par personne et
+  # par rôle sur le groupe, donc un seul environnement les pose (project_roles).
   team_group_assignments = flatten([
     for email, m in var.team : [
-      for role in local.team_group_roles[m.role] : {
+      for role in var.project_roles ? local.team_group_roles[m.role] : [] : {
         key = "${email}/${role}", principal_id = m.object_id, role = role, scope = data.azurerm_resource_group.this.id
       }
     ]

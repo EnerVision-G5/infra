@@ -27,6 +27,12 @@ variable "team" {
   default = {}
 }
 
+variable "project_roles" {
+  description = "Rôles de groupe et accès à l'état posés par cet environnement (un seul par groupe de ressources)."
+  type        = bool
+  default     = false
+}
+
 variable "storage_account_name" {
   description = "Compte de stockage du projet (bootstrap)."
   type        = string
