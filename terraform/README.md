@@ -32,12 +32,17 @@ terraform/
 │       ├── variables.tf        commun, puis une section par brique
 │       ├── outputs.tf
 │       ├── storage.tf          conteneurs de l'environnement sur le compte du projet
-│       └── iam.tf              droits de l'équipe : groupe, et blobs de l'environnement seul
+│       ├── iam.tf              droits : équipe, identités applicatives, au conteneur
+│       └── workload_identity.tf  identités des API on-premise (fédération, émetteur à nous)
 ├── scripts/
 │   ├── bootstrap.sh            une fois : compte du projet, identité CI
 │   ├── allow-ci.sh             ouvrir un autre groupe de ressources à la chaîne
-│   └── new-env.sh              nouvel environnement à partir d'un existant
-├── docs/organisation-azure.md  ce que l'école donne et interdit, l'équipe, les droits
+│   ├── new-env.sh              nouvel environnement à partir d'un existant
+│   ├── issuer-keygen.sh        paire de clés de l'émetteur d'un environnement
+│   └── workload-token.sh       jeton de test pour une identité applicative
+├── docs/
+│   ├── organisation-azure.md   ce que l'école donne et interdit, l'équipe, les droits
+│   └── identites-applicatives.md  brancher une API Python sur les blobs, sans secret
 └── .tflint.hcl
 ```
 
@@ -65,6 +70,7 @@ Deux règles :
 | Mettre un environnement dans un autre groupe de ressources (rare) | Celui qui tient le groupe lance `scripts/allow-ci.sh` dessus, puis le groupe va dans `<ENV>.auto.tfvars` par PR | idem |
 | Ajouter quelqu'un, changer son niveau, le retirer | Une ligne dans `team` du `<ENV>.auto.tfvars`, par PR | idem |
 | Ajouter une brique au projet | Un fichier dans `modules/tf-module-enervision/`, ses variables dans `variables.tf`, ses valeurs dans chaque `<ENV>.auto.tfvars` | idem, environnement par environnement |
+| Donner l'accès aux blobs à une API on-premise | `scripts/issuer-keygen.sh <ENV>` une fois (clé privée au vault Ansible, clé publique dans le tfvars), niveaux dans `blob_workloads`, PR ; puis `terraform output workload_identities` pour le `.env` de l'API. Détail : [docs/identites-applicatives.md](docs/identites-applicatives.md) | idem |
 | Voir ce qui est déployé | `terraform plan` en local (niveau `devops`), ou le portail Azure | — |
 | Démarrer sur un nouvel abonnement ou un premier groupe | `scripts/bootstrap.sh <groupe>`, une fois | — |
 
@@ -202,14 +208,26 @@ bash terraform/scripts/allow-ci.sh rg-<login>_cours-projet-eadl
 
 ## Scripts
 
-Trois scripts, tous idempotents : relancer ne casse rien, complète ce qui
-manque. Chacun explique en tête ses étapes et ses réglages.
+Cinq scripts. Les trois premiers sont idempotents : relancer ne casse
+rien, complète ce qui manque. Chacun explique en tête ses étapes et ses réglages.
 
 | Script | Quand | Ce qu'il fait |
 | --- | --- | --- |
 | `bootstrap.sh <groupe>` | une fois, par celui qui tient le groupe | Ce que Terraform ne peut pas créer lui-même : le compte de stockage du projet (sans clé, versions, corbeille) et son conteneur `tfstate` ; l'identité managée de la CI, ses identifiants fédérés GitHub et les mêmes rôles que vous sur le groupe ; votre accès aux blobs ; les deux secrets GitHub ; abonnement, groupe et compte écrits dans les `<ENV>.auto.tfvars` / `<ENV>.backend.tf` encore vierges |
 | `allow-ci.sh <groupe>` | seulement si un environnement doit vivre dans un autre groupe | Donne à l'identité CI ses rôles sur ce groupe, et à lui l'accès aux blobs. Ni compte ni identité : l'état reste sur le compte du projet |
 | `new-env.sh <SRC> <ENV>` | par nouvel environnement (ou le workflow *terraform-new-env*) | Copie le dossier d'un environnement, renomme ses fichiers, change la clé d'état et le nom. Ne touche pas à Azure |
+| `issuer-keygen.sh <ENV>` | une fois par environnement, à la mise en place des identités applicatives, puis à chaque rotation | Génère la paire de clés de l'émetteur : clé privée hors du dépôt (vault Ansible), clé publique au format JWK à coller dans `<ENV>.auto.tfvars`. Ne touche pas à Azure |
+| `workload-token.sh <clé> <issuer> <sujet>` | pour tester ou dépanner une identité applicative | Fabrique le même jeton que le code Python, à échanger avec `az login --federated-token` |
+
+## Identités applicatives
+
+Les API on-premise n'ont ni clé de compte ni secret Azure : une identité
+managée par niveau de droit (`api-rw`, `api-ro`) fait confiance à un
+émetteur de jetons à nous, une paire de clés par environnement dont la
+clé privée reste dans le vault Ansible. Azure vérifie les jetons contre la
+clé publique que Terraform publie sur le site statique du compte du
+projet. Mise en place, code Python, test et rotation :
+[docs/identites-applicatives.md](docs/identites-applicatives.md).
 
 ## CI/CD
 
