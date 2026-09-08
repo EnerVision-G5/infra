@@ -43,7 +43,7 @@ stockage du POC coûte quelques centimes par mois.
 
 Comme sur un projet GCP : chacun garde son compte (campus), reçoit un
 niveau sur le groupe de ressources, et le voit dans le portail. Les droits
-sont dans le code, dans `team` de `terraform/POC/POC.auto.tfvars` : une
+sont dans le code, dans `team` du `<ENV>.auto.tfvars` de chaque environnement : une
 ligne par personne, son courriel, son niveau (`member` voit et lit,
 `devops` fait tout ce que vous faites) et son objectId :
 
@@ -75,7 +75,7 @@ Un coéquipier, une à deux minutes après l'apply :
 ```bash
 az login --tenant 7f4f3591-5f6c-4f7b-a1bd-0a2dd8831218
 az group show -n rg-MCharge2024_cours-projet-eadl -o table
-cd terraform/POC && terraform init && terraform plan
+cd terraform/DEV && terraform init && terraform plan
 ```
 
 ## 5. Quand quelqu'un part

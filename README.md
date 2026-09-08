@@ -18,8 +18,8 @@ valider ; l'hôte est configuré et les applications déployées par
 [Déployer](#déployer)).
 
 Le dossier [`terraform/`](terraform/README.md) est le pendant cloud, ouvert
-avec un POC : un compte de stockage Blob Azure pour l'environnement `POC`
-dans le groupe de ressources fourni par l'école, état distant, CI/CD dédiée
+avec un compte de stockage Blob Azure par environnement (`DEV`, `PROD`)
+dans les groupes de ressources fournis par l'école, état distant, CI/CD dédiée
 (`terraform.yml`, plan sur PR, apply à la main depuis GitHub, OIDC sans secret). Il ne
 change rien à la cible on-premise.
 
