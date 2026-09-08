@@ -13,3 +13,11 @@ output "blob_endpoint" {
 output "storage_containers" {
   value = module.enervision.storage_containers
 }
+
+output "workload_issuer" {
+  value = module.enervision.workload_issuer
+}
+
+output "workload_identities" {
+  value = module.enervision.workload_identities
+}

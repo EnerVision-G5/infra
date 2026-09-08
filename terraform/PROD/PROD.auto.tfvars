@@ -19,3 +19,18 @@ storage_containers   = ["data"]
 
 # Identités (objectId) qui lisent et écrivent les blobs : applications, identités managées
 storage_blob_contributor_principal_ids = []
+
+# Identités applicatives (API on-premise) : une par niveau de droit, jeton
+# signé par notre émetteur, aucun secret côté Azure. Voir docs/identites-applicatives.md.
+#   1. bash terraform/scripts/issuer-keygen.sh PROD   → clé privée pour le vault Ansible,
+#      et le bloc workload_issuer_jwks ci-dessous (clé publique, pas un secret)
+#   2. après apply : terraform output workload_identities → client_id et sujet par API
+blob_workloads = {
+  "api-rw" = "rw"
+  "api-ro" = "ro"
+}
+workload_issuer_jwks = {
+  kid = "prod-20260908"
+  n   = "xAbDWcuQVkOHnsH5Ov52-a1rcbx5COqGaQ0gAaYp-t-OOOeSEhvS2Efb8-KctaNaUQptfsyLyUZIF9sl-B5tl7nD-yUHxPUbWY10ht60Ds3vSHwKkDWSb9hY90VzOp8yopJtTGf8F_I0ROBW60JSyBRV21S1X5ykTwE_kw480AsYVb_F923uxSoHDXEFgEMKzWOVGF6p1TOrnOge0WF3FIid2prpgqim2UCTYjXfK7eciuLIQuFHCbf7cbrTYmwkRkg-BcEBKXoMy1btXcr37VbjpbfjJWrP3oT3IBkEd5G8XhmE9UBx14GZ8LQeR7DBTi2LX2kD1NhWtHacX6a2aw"
+  e   = "AQAB"
+}
