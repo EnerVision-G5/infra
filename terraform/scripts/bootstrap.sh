@@ -156,5 +156,5 @@ done
 command -v terraform >/dev/null && terraform fmt -recursive "$tf_root" >/dev/null
 
 say "Terminé. Suite :"
-echo "  cd terraform/POC && terraform init && terraform plan"
-echo "  coéquipiers : team dans POC/POC.auto.tfvars (az ad user show --id <courriel> --query id -o tsv)"
+echo "  cd terraform/DEV && terraform init && terraform plan"
+echo "  coéquipiers : team dans DEV/DEV.auto.tfvars (az ad user show --id <courriel> --query id -o tsv)"

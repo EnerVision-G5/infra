@@ -2,7 +2,7 @@
 #
 # Un fichier par brique (storage.tf, iam.tf, …), et ici ce qui est commun à
 # toutes : le groupe de ressources, les noms, les étiquettes. Un
-# environnement (POC/, PROD/…) appelle ce module une fois, avec ses valeurs ;
+# environnement (DEV/, PROD/…) appelle ce module une fois, avec ses valeurs ;
 # ajouter une brique au projet, c'est ajouter un fichier ici et, si elle a
 # des réglages, ses variables dans variables.tf.
 

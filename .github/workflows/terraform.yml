@@ -28,9 +28,9 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: "Environnement à appliquer (nom du dossier : POC, PROD…)"
+        description: "Environnement à appliquer (nom du dossier : DEV, PROD…)"
         required: true
-        default: "POC"
+        default: "DEV"
         type: string
 
 permissions:

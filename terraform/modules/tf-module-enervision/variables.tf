@@ -77,7 +77,7 @@ variable "team_role_bundles" {
 }
 
 variable "storage_blob_contributor_principal_ids" {
-  description = "Identités (objectId) autorisées à lire et écrire les blobs du compte : applications, identités managées. Les personnes reçoivent leurs droits au niveau du groupe, par scripts/grant.sh."
+  description = "Identités (objectId) autorisées à lire et écrire les blobs du compte : applications, identités managées. Les personnes, elles, sont dans team."
   type        = list(string)
   default     = []
 }

@@ -37,7 +37,7 @@ bash terraform/scripts/bootstrap.sh rg-MCharge2024_cours-projet-eadl
 ```
 
 Pas de budget à poser : l'abonnement est celui de l'école. Le compte de
-stockage du POC coûte quelques centimes par mois.
+stockage de DEV coûte quelques centimes par mois.
 
 ## 2. Donner l'accès à l'équipe
 

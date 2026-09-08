@@ -2,7 +2,7 @@
 #
 # Nouvel environnement à partir d'un existant :
 #
-#   bash terraform/scripts/new-env.sh POC PROD
+#   bash terraform/scripts/new-env.sh DEV STAGING
 #
 # Copie le dossier, renomme <SRC>.auto.tfvars / <SRC>.backend.tf, change la
 # clé d'état et le nom d'environnement. Ne touche pas à Azure : la CI crée
@@ -18,8 +18,8 @@
 
 set -euo pipefail
 
-src="${1:?usage : new-env.sh <SRC> <ENV>   ex. new-env.sh POC PROD}"
-env_name="${2:?usage : new-env.sh <SRC> <ENV>   ex. new-env.sh POC PROD}"
+src="${1:?usage : new-env.sh <SRC> <ENV>   ex. new-env.sh DEV STAGING}"
+env_name="${2:?usage : new-env.sh <SRC> <ENV>   ex. new-env.sh DEV STAGING}"
 env_lower="$(printf '%s' "$env_name" | tr '[:upper:]' '[:lower:]')"
 src_lower="$(printf '%s' "$src" | tr '[:upper:]' '[:lower:]')"
 

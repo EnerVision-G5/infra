@@ -42,7 +42,7 @@ terraform/
 
 Deux règles :
 
-- **Un module projet, un dossier par environnement.** `POC/main.tf` ne
+- **Un module projet, un dossier par environnement.** `DEV/main.tf` ne
   contient qu'un appel du module avec ses valeurs. Ajouter une brique au
   projet, c'est un fichier de plus dans le module (et ses variables, dans
   la section du même nom de `variables.tf`) ; ajouter un environnement,
