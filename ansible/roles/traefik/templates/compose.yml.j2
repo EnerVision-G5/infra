@@ -3,6 +3,10 @@ services:
     image: traefik:v3.7.9
     container_name: traefik
     restart: unless-stopped
+    # Qui meurt en premier si la VM manque de mémoire, plutôt que de laisser
+    # le noyau choisir au score — c'est-à-dire souvent le plus gros, donc la
+    # base. Sans le proxy, plus rien n'est joignable — y compris pour diagnostiquer.
+    oom_score_adj: -500
 
     command:
       - --api.dashboard=true

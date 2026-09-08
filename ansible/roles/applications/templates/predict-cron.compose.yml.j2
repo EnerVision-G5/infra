@@ -12,6 +12,10 @@ services:
     image: {{ applications_image_namespace }}/{{ applications_api_image_name }}:{{ applications_api_sha }}
     container_name: enervision-predict-cron
     restart: unless-stopped
+    # Qui meurt en premier si la VM manque de mémoire, plutôt que de laisser
+    # le noyau choisir au score — c'est-à-dire souvent le plus gros, donc la
+    # base. Boucle relancée à chaque cycle : un kill lui coûte un rafraîchissement.
+    oom_score_adj: 500
 
     entrypoint: ["/bin/sh", "-c"]
     command:

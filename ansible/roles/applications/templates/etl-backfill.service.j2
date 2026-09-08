@@ -5,6 +5,14 @@ Documentation=https://github.com/EnerVision-G5/predict
 After=docker.service
 Requires=docker.service
 
+# Plan de secours : une seule reprise, et espacée. Un job tué à son
+# plafond mémoire échouera de la même façon s'il repart tout de suite ;
+# un quart d'heure plus tard, la machine peut avoir rendu ce qui manquait.
+# Au-delà, l'unité reste en échec — c'est un incident à lire, pas une
+# boucle à entretenir, et l'alerte Grafana le dit.
+StartLimitIntervalSec={{ applications_jobs_restart_window_seconds }}
+StartLimitBurst={{ applications_jobs_restart_attempts }}
+
 [Service]
 Type=oneshot
 
@@ -27,3 +35,7 @@ ExecStart=/usr/bin/flock --wait {{ applications_jobs_lock_wait_seconds }} \
 # enchaînent des dizaines de conteneurs. Sans cette borne, systemd tuerait le
 # service au bout de 90 s, au milieu de la première.
 TimeoutStartSec={{ applications_etl_backfill_timeout_seconds }}
+
+# Reprise sur échec, dans la limite posée par StartLimit* ci-dessus.
+Restart=on-failure
+RestartSec={{ applications_jobs_restart_delay_seconds }}

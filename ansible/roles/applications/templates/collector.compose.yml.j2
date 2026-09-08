@@ -13,6 +13,10 @@ services:
     # unless-stopped et non always : un arrêt volontaire de l'exploitant n'est
     # pas défait au redémarrage du démon Docker.
     restart: unless-stopped
+    # Qui meurt en premier si la VM manque de mémoire, plutôt que de laisser
+    # le noyau choisir au score — c'est-à-dire souvent le plus gros, donc la
+    # base. Boucle relancée à chaque cycle : un kill lui coûte un tick.
+    oom_score_adj: 500
     entrypoint: ["python", "-m", "collector.poller"]
 
     env_file:

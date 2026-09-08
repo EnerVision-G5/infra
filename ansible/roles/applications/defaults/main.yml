@@ -445,6 +445,16 @@ applications_jobs_lock_wait_seconds: 3600
 # /usr/local/bin, réservé à ce qu'un administrateur installe à la main.
 applications_jobs_script_dir: "/usr/local/sbin"
 
+# Reprise des traitements datés après un échec. Deux démarrages par
+# fenêtre : celui de l'ordonnanceur et UNE reprise. Un job tué à son
+# plafond mémoire échouerait pareil en repartant aussitôt ; un quart
+# d'heure plus tard, la machine peut avoir rendu ce qui manquait. Au-delà,
+# l'unité reste en échec : la relancer indéfiniment consommerait la VM
+# qu'elle a déjà fait tomber une fois.
+applications_jobs_restart_delay_seconds: 900
+applications_jobs_restart_attempts: 2
+applications_jobs_restart_window_seconds: 86400
+
 # --------------------------------------------------------------------------
 # Rattrapage ETL : reproduction des variables sur une fenêtre historique.
 #

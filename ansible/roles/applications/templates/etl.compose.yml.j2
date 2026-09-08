@@ -20,6 +20,10 @@ services:
     container_name: enervision-etl
     # Le conteneur héberge la boucle : s'il sort, plus rien n'impute.
     restart: unless-stopped
+    # Qui meurt en premier si la VM manque de mémoire, plutôt que de laisser
+    # le noyau choisir au score — c'est-à-dire souvent le plus gros, donc la
+    # base. Boucle relancée à chaque cycle : un kill lui coûte un passage.
+    oom_score_adj: 500
 
     entrypoint: ["/bin/sh", "-c"]
     command:
