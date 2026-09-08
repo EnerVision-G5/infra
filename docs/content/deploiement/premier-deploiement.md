@@ -62,17 +62,72 @@ Vérifier : Traefik, Garage, TimescaleDB, la stack monitoring tournent.
 Le layout Garage est appliqué automatiquement (`/garage status` doit montrer
 le nœud avec une zone et une capacité).
 
-## 7 — Bucket + clé Garage
+## 7 — Seaux + clé Garage
+
+DEUX seaux, et non un seul. `enervision-features` porte les partitions de
+variables, que l'ETL réécrit à chaque run ; `enervision-datasets` porte
+l'historique de référence, figé et irremplaçable. Les séparer est ce qui
+garantit qu'un rejeu ne peut rien effacer d'une donnée que la chaîne ne sait
+pas régénérer.
 
 ```bash
-docker exec garage /garage bucket create enervision-features
 docker exec garage /garage key create enervision-app
-docker exec garage /garage bucket allow --read --write --owner enervision-features --key <key-id>
 docker exec garage /garage key info enervision-app --show-secret
+
+for seau in enervision-features enervision-datasets; do
+  docker exec garage /garage bucket create "$seau"
+  docker exec garage /garage bucket allow --read --write --owner "$seau" --key <key-id>
+done
 ```
 
 Reporter l'`Access Key ID` et le `Secret Access Key` dans le Vault
 (`vault_garage_s3_*`), étape 5.
+
+## 7 bis — Historique de référence
+
+Les CSV de référence — deux années horaires par site — ne sont ni dans le
+dépôt `predict` ni dans l'image du collecteur. Rien ne les transporte : il
+faut les déposer une fois dans `enervision-datasets`, sans quoi
+`python -m collector.datasets` n'aura rien à charger et le premier
+entraînement n'aura pas de saisons à apprendre.
+
+Ils ne sont PAS copiés sur la VM. L'API S3 de Garage est routée par Traefik
+sur `s3.enervision.com` : l'envoi part donc directement du poste qui détient
+les fichiers, sans étape intermédiaire sur le serveur.
+
+```bash
+cd predict
+export AWS_ENDPOINT_URL=http://s3.enervision.com
+export AWS_ACCESS_KEY_ID=<key-id>              # étape 7
+export AWS_SECRET_ACCESS_KEY=<secret>
+export AWS_REGION=garage AWS_DEFAULT_REGION=garage
+
+uv run python deploy/push-datasets.py datasets s3://enervision-datasets
+```
+
+`s3.enervision.com` doit résoudre vers l'IP de la VM, comme les autres noms
+de l'étape 10 — même entrée dans le fichier `hosts` du poste.
+
+Vérifier depuis le serveur :
+
+```bash
+docker exec garage /garage bucket info enervision-datasets    # 7 objets
+```
+
+Puis charger en base, une fois les applications déployées (étape 9) :
+
+```bash
+cd /opt/srv/applications/collector
+docker compose run --rm --entrypoint python poller -m collector.datasets
+```
+
+Par `compose run` et non `docker run` : le service porte déjà le `.env` et
+les DEUX réseaux nécessaires — `db_network` pour écrire dans `mesure`,
+`storage_network` pour lire les CSV sur Garage. Un `docker run --network`
+n'en attacherait qu'un.
+
+Le chargement est rejouable : `sink.write` insère en `ON CONFLICT DO NOTHING`.
+Il ne réécrit donc rien sur un serveur qui collecte déjà, il comble.
 
 ## 8 — Versions d'images
 
