@@ -95,15 +95,29 @@ Ils ne sont PAS copiés sur la VM. L'API S3 de Garage est routée par Traefik
 sur `s3.enervision.com` : l'envoi part donc directement du poste qui détient
 les fichiers, sans étape intermédiaire sur le serveur.
 
+La clé n'est pas à ressaisir : c'est celle de l'étape 7, déjà portée par le
+Vault sous `vault_garage_s3_access_key_id` et
+`vault_garage_s3_secret_access_key` — les mêmes que le rôle `applications`
+distribue aux services sous `applications_predict_s3_*`. Les relire :
+
 ```bash
-cd predict
+ansible-vault view ansible/inventories/on-premise/group_vars/all/vault.yml
+```
+
+Puis, depuis le dépôt `predict` :
+
+```bash
 export AWS_ENDPOINT_URL=http://s3.enervision.com
-export AWS_ACCESS_KEY_ID=<key-id>              # étape 7
-export AWS_SECRET_ACCESS_KEY=<secret>
 export AWS_REGION=garage AWS_DEFAULT_REGION=garage
+read -rs -p "access key id: "     AWS_ACCESS_KEY_ID     && export AWS_ACCESS_KEY_ID
+read -rs -p "secret access key: " AWS_SECRET_ACCESS_KEY && export AWS_SECRET_ACCESS_KEY
 
 uv run python deploy/push-datasets.py datasets s3://enervision-datasets
 ```
+
+`read -rs` plutôt qu'un `export` littéral : une clé S3 écrite dans la ligne de
+commande reste dans l'historique du shell, où rien ne la chiffre — ce que le
+Vault existe précisément pour éviter.
 
 `s3.enervision.com` doit résoudre vers l'IP de la VM, comme les autres noms
 de l'étape 10 — même entrée dans le fichier `hosts` du poste.
