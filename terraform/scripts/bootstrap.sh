@@ -10,8 +10,9 @@
 # peut pas créer ce dont il dépend pour tourner ; c'est tout ce que fait ce
 # script, et un nouvel environnement n'a jamais besoin d'y repasser :
 #
-#   1. l'état distant : compte de stockage sans clé partagée, conteneur
-#      tfstate, versions et corbeille ;
+#   1. le compte de stockage du projet : sans clé partagée, versions et
+#      corbeille ; il porte l'état (conteneur tfstate) et, par Terraform, un
+#      conteneur par environnement (l'école plafonne les comptes à deux) ;
 #   2. l'identité de la CI : identité managée + identifiants fédérés GitHub
 #      (OIDC, aucun secret), avec les mêmes rôles que vous sur le groupe ;
 #   3. vos propres droits de données sur les blobs (plan local, vérifs) ;
@@ -63,11 +64,11 @@ my_roles="$(az role assignment list --assignee "$me" --scope "$rg_scope" --inclu
 [ -n "$my_roles" ] || { echo "Aucun rôle d'écriture sur $rg pour $me" >&2; exit 1; }
 say "Groupe $rg ($location) — vos rôles : $(printf '%s' "$my_roles" | tr '\n' ',' | sed 's/,$//')"
 
-# --- 1. État distant ---------------------------------------------------------------
+# --- 1. Compte de stockage du projet -------------------------------------------------
 # Suffixe déterministe (début de l'identifiant d'abonnement) : unique au monde,
 # identique à chaque relance, rien à retenir.
 state_sa="st${project}tf$(printf '%s' "$sub_id" | tr -d - | cut -c1-6)"
-say "État distant : $rg / $state_sa / tfstate"
+say "Compte du projet : $rg / $state_sa (état dans tfstate)"
 if ! az storage account show -n "$state_sa" -g "$rg" >/dev/null 2>&1; then
   az storage account create -n "$state_sa" -g "$rg" -l "$location" \
     --sku Standard_LRS --kind StorageV2 \

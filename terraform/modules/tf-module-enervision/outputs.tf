@@ -3,11 +3,11 @@ output "resource_group_name" {
 }
 
 output "storage_account_name" {
-  value = azurerm_storage_account.this.name
+  value = data.azurerm_storage_account.project.name
 }
 
 output "blob_endpoint" {
-  value = azurerm_storage_account.this.primary_blob_endpoint
+  value = data.azurerm_storage_account.project.primary_blob_endpoint
 }
 
 output "storage_containers" {

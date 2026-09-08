@@ -1,9 +1,10 @@
 # terraform
 
-Infrastructure Azure d'EnerVision. Périmètre actuel : un **compte de
-stockage Blob** par environnement, `DEV` et `PROD`. Rien ici ne touche la
-VM on-premise, qui reste sous [Ansible](../ansible/) ; ce dossier est le
-pendant cloud, avec la même logique.
+Infrastructure Azure d'EnerVision. Périmètre actuel : du **stockage Blob**
+pour `DEV` et `PROD`, un conteneur par environnement sur le compte du
+projet. Rien ici ne touche la VM on-premise, qui reste sous
+[Ansible](../ansible/) ; ce dossier est le pendant cloud, avec la même
+logique.
 
 ## Logique
 
@@ -20,7 +21,7 @@ terraform/
 │   ├── .terraform-version      version de Terraform, lue par tfenv et par la CI
 │   ├── .terraform.lock.hcl     versions des fournisseurs, verrouillées
 │   ├── DEV.auto.tfvars         valeurs de l'environnement : abonnement, groupe, équipe, briques
-│   ├── DEV.backend.tf          où vit l'état : compte partagé, clé DEV.tfstate
+│   ├── DEV.backend.tf          où vit l'état : compte du projet, clé DEV.tfstate
 │   ├── providers.tf            versions, fournisseur (sans identifiant)
 │   ├── main.tf                 un appel du module projet, avec les valeurs de l'environnement
 │   ├── variables.tf / outputs.tf
@@ -30,10 +31,10 @@ terraform/
 │       ├── main.tf             groupe de ressources (fourni), noms, étiquettes
 │       ├── variables.tf        commun, puis une section par brique
 │       ├── outputs.tf
-│       ├── storage.tf          compte Blob durci + conteneurs
-│       └── iam.tf              droits de l'équipe sur le groupe, d'identités sur le compte
+│       ├── storage.tf          conteneurs de l'environnement sur le compte du projet
+│       └── iam.tf              droits de l'équipe : groupe, et blobs de l'environnement seul
 ├── scripts/
-│   ├── bootstrap.sh            une fois : état, identité CI, sur le premier groupe
+│   ├── bootstrap.sh            une fois : compte du projet, identité CI
 │   ├── allow-ci.sh             ouvrir un autre groupe de ressources à la chaîne
 │   └── new-env.sh              nouvel environnement à partir d'un existant
 ├── docs/organisation-azure.md  ce que l'école donne et interdit, l'équipe, les droits
@@ -61,7 +62,7 @@ Deux règles :
 | Changer quelque chose (une brique, une valeur) | Une branche, une PR : le plan arrive en commentaire, relu avec le code | Après fusion, *Actions → terraform → Run workflow*, branche `develop` (`master` pour `PROD`), environnement saisi |
 | Déployer ce qui est fusionné | Rien à coder | Le même lancement manuel. **Rien ne s'applique tout seul**, ni à la fusion ni au push |
 | Ajouter un environnement | *Actions → terraform-new-env → Run workflow* (ou `scripts/new-env.sh`) : le dossier est créé et sa PR ouverte ; relire son `.auto.tfvars` | Lancement manuel après fusion |
-| Mettre un environnement dans un autre groupe de ressources | Celui qui tient le groupe lance `scripts/allow-ci.sh` dessus, puis le groupe va dans `<ENV>.auto.tfvars` par PR | idem |
+| Mettre un environnement dans un autre groupe de ressources (rare) | Celui qui tient le groupe lance `scripts/allow-ci.sh` dessus, puis le groupe va dans `<ENV>.auto.tfvars` par PR | idem |
 | Ajouter quelqu'un, changer son niveau, le retirer | Une ligne dans `team` du `<ENV>.auto.tfvars`, par PR | idem |
 | Ajouter une brique au projet | Un fichier dans `modules/tf-module-enervision/`, ses variables dans `variables.tf`, ses valeurs dans chaque `<ENV>.auto.tfvars` | idem, environnement par environnement |
 | Voir ce qui est déployé | `terraform plan` en local (niveau `devops`), ou le portail Azure | — |
@@ -79,18 +80,21 @@ Le fournisseur ne lit **aucun identifiant dans le code** :
 
 Ce que le groupe de l'école impose, et que le module respecte : région
 `francecentral` seule, étiquette `user` égale à celle du groupe sur chaque
-ressource (recopiée depuis le groupe), comptes de stockage en `Standard_LRS`,
-et **deux comptes de stockage au plus** par groupe : celui de l'état plus
-un environnement. `DEV` vit dans le groupe du bootstrap ; `PROD` va dans
-un autre groupe, celui d'un coéquipier (voir *Nouvel environnement*), ce
-qui sépare de toute façon la production du développement. Le détail des
-droits et des interdits : [docs/organisation-azure.md](docs/organisation-azure.md).
+ressource, comptes de stockage en `Standard_LRS`, et **deux comptes de
+stockage au plus** par groupe, compteur tenu par une automatisation de
+l'école qui refuse ensuite toute création ou modification. D'où **un seul
+compte pour le projet**, créé par le bootstrap : il porte l'état Terraform
+et un conteneur par environnement et par usage (`dev-data`, `prod-data`).
+La séparation entre environnements se fait au conteneur, droits compris :
+un `member` de `PROD` ne lit pas les blobs de `DEV`. Le détail des droits
+et des interdits : [docs/organisation-azure.md](docs/organisation-azure.md).
 
 Conventions, celles du
 [Cloud Adoption Framework](https://learn.microsoft.com/azure/cloud-adoption-framework/ready/azure-best-practices/resource-abbreviations) :
-`st<projet><env><suffixe>` (ni tiret ni majuscule, unique au monde :
-suffixe aléatoire gardé dans l'état), `id-<projet>-github`. Étiquettes
-partout : `project`, `environment`, `managed_by`, `repository`, `user`.
+`st<projet>tf<suffixe>` pour le compte du projet (ni tiret ni majuscule,
+unique au monde : suffixe tiré de l'abonnement), `<env>-<usage>` pour les
+conteneurs, `id-<projet>-github`. Étiquettes partout : `project`,
+`environment`, `managed_by`, `repository`, `user`.
 
 ## Démarrer (une fois, celui qui tient le groupe)
 
@@ -98,10 +102,11 @@ partout : `project`, `environment`, `managed_by`, `repository`, `user`.
 bash terraform/scripts/bootstrap.sh rg-MCharge2024_cours-projet-eadl
 ```
 
-Le script crée le compte d'état, l'identité managée de la CI avec ses
+Le script crée le compte de stockage du projet (état + conteneurs, sans
+clé partagée, versions, corbeille), l'identité managée de la CI avec ses
 identifiants fédérés GitHub et les mêmes rôles que vous sur le groupe,
-pousse les deux secrets GitHub, et écrit abonnement, groupe et compte
-d'état dans `DEV/DEV.auto.tfvars` et `DEV/DEV.backend.tf`.
+pousse les deux secrets GitHub, et écrit abonnement, groupe et compte dans
+les `<ENV>.auto.tfvars` et `<ENV>.backend.tf`.
 
 ## L'équipe
 
@@ -111,10 +116,10 @@ gens s'y voient donner un niveau, et se connectent avec leur propre compte
 `<ENV>.auto.tfvars` de chaque environnement (la production n'a pas
 forcément les mêmes `devops` que le développement) :
 
-| Niveau | Comme sur GCP | Rôles Azure posés sur le groupe |
-| --- | --- | --- |
-| `member` | viewer | `Reader`, `Storage Blob Data Reader` : voit tout, lit les blobs |
-| `devops` | editor | `Reader`, `Devops-cours-projet-eadl` (le rôle de l'école, celui que vous tenez), `Storage Blob Data Contributor` : crée, modifie, écrit les blobs, état Terraform compris |
+| Niveau | Comme sur GCP | Sur le groupe (commun) | Sur les blobs (de cet environnement seul) |
+| --- | --- | --- | --- |
+| `member` | viewer | `Reader` : voit tout | `Storage Blob Data Reader` sur les conteneurs de l'environnement |
+| `devops` | editor | `Reader`, `Devops-cours-projet-eadl` (le rôle de l'école, celui que vous tenez) : crée, modifie | `Storage Blob Data Contributor` sur les conteneurs de l'environnement et sur `tfstate` (pour `terraform plan` en local) |
 
 Une entrée par personne, clé = courriel, avec son objectId Entra ID (le
 courriel peut changer, l'identifiant non, et la CI n'a pas le droit
@@ -159,15 +164,15 @@ Vérifier le résultat sans clé, avec son identité :
 
 ```bash
 sa=$(terraform output -raw storage_account_name)
-az storage blob upload --auth-mode login --account-name "$sa" -c dev -f README.md -n test.md
-az storage blob list   --auth-mode login --account-name "$sa" -c dev -o table
+az storage blob upload --auth-mode login --account-name "$sa" -c dev-data -f README.md -n test.md
+az storage blob list   --auth-mode login --account-name "$sa" -c dev-data -o table
 ```
 
-`AuthorizationPermissionMismatch` = rôle *Storage Blob Data Contributor*
-absent sur le groupe (bootstrap pour vous, `team` pour les autres ;
-une à deux minutes de propagation après l'apply). Un `RequestDisallowedByPolicy` au plan
-ou à l'apply cite la stratégie de l'école en cause : région, étiquette
-`user`, SKU, ou nombre de comptes.
+`AuthorizationPermissionMismatch` = rôle *Storage Blob Data* absent sur
+ce conteneur (bootstrap pour vous, `team` pour les autres ; une à deux
+minutes de propagation après l'apply). Un `RequestDisallowedByPolicy` au
+plan ou à l'apply cite la stratégie de l'école en cause : région,
+étiquette `user`, SKU, ou nombre de comptes.
 
 ## Nouvel environnement
 
@@ -180,14 +185,16 @@ bash terraform/scripts/new-env.sh DEV STAGING
 ```
 
 Puis relire dans le dossier créé : `<ENV>.auto.tfvars` (abonnement,
-groupe de ressources, équipe, briques), `<ENV>.backend.tf` (où vit son
-état, sur le compte du bootstrap), `main.tf`. La CI découvre le dossier
+groupe, compte du projet, équipe, conteneurs), `<ENV>.backend.tf` (où vit
+son état, sur le compte du projet), `main.tf`. La CI découvre le dossier
 seule, valide et planifie ; après fusion, l'apply se lance à la main.
+Tous les environnements tiennent dans le même groupe : un conteneur de
+plus, pas un compte.
 
-**Dans un autre groupe de ressources** (le cas de `PROD`) : la personne
-qui tient ce groupe ouvre la chaîne dessus, une fois, puis le nom du
-groupe va dans `<ENV>.auto.tfvars`. L'état reste sur le compte du
-bootstrap, rien d'autre à créer :
+**Dans un autre groupe de ressources**, si un jour il le faut : la
+personne qui tient ce groupe ouvre la chaîne dessus, une fois, puis le nom
+du groupe va dans `<ENV>.auto.tfvars`. L'état reste sur le compte du
+projet :
 
 ```bash
 bash terraform/scripts/allow-ci.sh rg-<login>_cours-projet-eadl
@@ -200,8 +207,8 @@ manque. Chacun explique en tête ses étapes et ses réglages.
 
 | Script | Quand | Ce qu'il fait |
 | --- | --- | --- |
-| `bootstrap.sh <groupe>` | une fois, sur le premier groupe, par celui qui le tient | Ce que Terraform ne peut pas créer lui-même : le compte d'état (sans clé, versions, corbeille) et son conteneur `tfstate` ; l'identité managée de la CI, ses identifiants fédérés GitHub et les mêmes rôles que vous sur le groupe ; votre accès aux blobs ; les deux secrets GitHub ; abonnement, groupe et compte d'état écrits dans les `<ENV>.auto.tfvars` / `<ENV>.backend.tf` encore vierges |
-| `allow-ci.sh <groupe>` | une fois par groupe supplémentaire, par celui qui le tient | Donne à l'identité CI ses rôles sur ce groupe, et à lui l'accès aux blobs. Ni compte ni identité : l'état reste sur le compte du bootstrap |
+| `bootstrap.sh <groupe>` | une fois, par celui qui tient le groupe | Ce que Terraform ne peut pas créer lui-même : le compte de stockage du projet (sans clé, versions, corbeille) et son conteneur `tfstate` ; l'identité managée de la CI, ses identifiants fédérés GitHub et les mêmes rôles que vous sur le groupe ; votre accès aux blobs ; les deux secrets GitHub ; abonnement, groupe et compte écrits dans les `<ENV>.auto.tfvars` / `<ENV>.backend.tf` encore vierges |
+| `allow-ci.sh <groupe>` | seulement si un environnement doit vivre dans un autre groupe | Donne à l'identité CI ses rôles sur ce groupe, et à lui l'accès aux blobs. Ni compte ni identité : l'état reste sur le compte du projet |
 | `new-env.sh <SRC> <ENV>` | par nouvel environnement (ou le workflow *terraform-new-env*) | Copie le dossier d'un environnement, renomme ses fichiers, change la clé d'état et le nom. Ne touche pas à Azure |
 
 ## CI/CD

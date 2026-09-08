@@ -27,6 +27,11 @@ variable "team" {
   default = {}
 }
 
+variable "storage_account_name" {
+  description = "Compte de stockage du projet (bootstrap)."
+  type        = string
+}
+
 variable "storage_containers" {
   type    = list(string)
   default = []

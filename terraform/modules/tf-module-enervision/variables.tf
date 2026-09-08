@@ -27,28 +27,15 @@ variable "tags" {
 
 # --- storage.tf
 
+variable "storage_account_name" {
+  description = "Compte de stockage du projet, créé par scripts/bootstrap.sh : il porte l'état et les conteneurs de tous les environnements."
+  type        = string
+}
+
 variable "storage_containers" {
-  description = "Conteneurs Blob du compte de stockage, tous privés."
+  description = "Conteneurs de cet environnement, préfixés par son nom (dev-data, prod-data…). Tous privés."
   type        = list(string)
   default     = []
-}
-
-variable "storage_replication_type" {
-  description = "Standard_LRS est la seule réplication autorisée par l'école ; ZRS ou GRS ailleurs."
-  type        = string
-  default     = "LRS"
-}
-
-variable "storage_soft_delete_days" {
-  description = "Rétention des blobs et conteneurs supprimés, en jours (1 à 365)."
-  type        = number
-  default     = 7
-}
-
-variable "storage_public_network_access_enabled" {
-  description = "Accès réseau public au compte, filtré par l'authentification seule. À fermer en production (point de terminaison privé)."
-  type        = bool
-  default     = true
 }
 
 # --- iam.tf
@@ -67,17 +54,14 @@ variable "team" {
   }
 }
 
-variable "team_role_bundles" {
-  description = "Rôles Azure derrière chaque niveau : member voit tout et lit les blobs ; devops a le rôle Devops de l'école et écrit les blobs, état Terraform compris."
-  type        = map(list(string))
-  default = {
-    member = ["Reader", "Storage Blob Data Reader"]
-    devops = ["Reader", "Devops-cours-projet-eadl", "Storage Blob Data Contributor"]
-  }
+variable "devops_role_name" {
+  description = "Rôle Azure du niveau devops sur le groupe : celui que l'école donne à l'étudiant qui tient le groupe. Contributor dans un abonnement à soi."
+  type        = string
+  default     = "Devops-cours-projet-eadl"
 }
 
 variable "storage_blob_contributor_principal_ids" {
-  description = "Identités (objectId) autorisées à lire et écrire les blobs du compte : applications, identités managées. Les personnes, elles, sont dans team."
+  description = "Identités (objectId) autorisées à lire et écrire les blobs de cet environnement : applications, identités managées. Les personnes, elles, sont dans team."
   type        = list(string)
   default     = []
 }

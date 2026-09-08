@@ -1,50 +1,24 @@
-resource "azurerm_storage_account" "this" {
-  # Ni tiret ni majuscule, 24 caractères maximum, unique au monde.
-  name                = "st${var.project}${var.environment}${random_string.suffix.result}"
+# Stockage Blob : un seul compte pour le projet, créé et durci par
+# scripts/bootstrap.sh (pas de clé partagée, TLS 1.2, versions, corbeille),
+# qui porte l'état Terraform et un conteneur par environnement et par usage.
+#
+# Pourquoi pas un compte par environnement : la stratégie de l'école plafonne
+# à deux comptes par groupe de ressources, compteur tenu par une
+# automatisation qui refuse ensuite toute création ou modification. Un compte,
+# des conteneurs : la séparation entre environnements se fait au niveau du
+# conteneur, y compris pour les droits (iam.tf).
+
+data "azurerm_storage_account" "project" {
+  name                = var.storage_account_name
   resource_group_name = data.azurerm_resource_group.this.name
-  location            = data.azurerm_resource_group.this.location
-
-  account_kind             = "StorageV2"
-  account_tier             = "Standard"
-  account_replication_type = var.storage_replication_type
-  access_tier              = "Hot"
-
-  # Transport : TLS 1.2 minimum, HTTPS seulement.
-  min_tls_version            = "TLS1_2"
-  https_traffic_only_enabled = true
-
-  # Aucun blob ni conteneur lisible anonymement, quoi que demande un conteneur.
-  allow_nested_items_to_be_public = false
-
-  # Pas de clé de compte : toute lecture ou écriture passe par une identité
-  # Entra ID et un rôle (iam.tf). Une clé est un secret de plus à garder, à
-  # faire tourner, et qui donne tout ; un rôle se retire.
-  shared_access_key_enabled       = false
-  default_to_oauth_authentication = true
-
-  public_network_access_enabled = var.storage_public_network_access_enabled
-
-  blob_properties {
-    # Versions et corbeille : une suppression ou un écrasement se rattrape
-    # pendant storage_soft_delete_days jours.
-    versioning_enabled = true
-
-    delete_retention_policy {
-      days = var.storage_soft_delete_days
-    }
-
-    container_delete_retention_policy {
-      days = var.storage_soft_delete_days
-    }
-  }
-
-  tags = local.tags
 }
 
+# Nom préfixé par l'environnement : deux environnements sur le même compte ne
+# peuvent pas se disputer un conteneur.
 resource "azurerm_storage_container" "this" {
   for_each = toset(var.storage_containers)
 
-  name                  = each.value
-  storage_account_id    = azurerm_storage_account.this.id
+  name                  = "${var.environment}-${each.value}"
+  storage_account_id    = data.azurerm_storage_account.project.id
   container_access_type = "private"
 }

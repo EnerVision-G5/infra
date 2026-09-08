@@ -8,6 +8,7 @@ module "enervision" {
 
   team = var.team
 
+  storage_account_name                   = var.storage_account_name
   storage_containers                     = var.storage_containers
   storage_blob_contributor_principal_ids = var.storage_blob_contributor_principal_ids
 }

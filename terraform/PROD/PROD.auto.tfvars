@@ -13,7 +13,9 @@ team = {
   # "autre.nom@campus-eni.fr"  = { role = "member", object_id = "00000000-0000-0000-0000-000000000000" }
 }
 
-storage_containers = ["prod"]
+# Compte du projet (bootstrap) ; conteneurs préfixés : prod-data
+storage_account_name = "stenervisiontfca5c57"
+storage_containers   = ["data"]
 
 # Identités (objectId) qui lisent et écrivent les blobs : applications, identités managées
 storage_blob_contributor_principal_ids = []

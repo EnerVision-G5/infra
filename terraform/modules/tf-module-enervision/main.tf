@@ -22,12 +22,3 @@ locals {
   )
 }
 
-# Suffixe stable (gardé dans l'état) pour les ressources dont le nom doit
-# être unique au monde (compte de stockage).
-resource "random_string" "suffix" {
-  length  = 4
-  lower   = true
-  upper   = false
-  numeric = true
-  special = false
-}
