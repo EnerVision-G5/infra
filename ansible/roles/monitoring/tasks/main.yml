@@ -76,6 +76,23 @@
     group: root
     mode: "0644"
 
+# Les règles vivent dans le répertoire de provisioning déjà monté : Grafana
+# les charge au démarrage, il n'y a donc rien à appeler ni à recharger.
+- name: Generate Grafana alert rules provisioning
+  ansible.builtin.template:
+    src: grafana-alerting.yml.j2
+    dest: "{{ monitoring_dir }}/grafana/provisioning/alerting/enervision.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  when: monitoring_alerting_enabled | bool
+
+- name: Remove Grafana alert rules when alerting is disabled
+  ansible.builtin.file:
+    path: "{{ monitoring_dir }}/grafana/provisioning/alerting/enervision.yml"
+    state: absent
+  when: not (monitoring_alerting_enabled | bool)
+
 - name: Deploy Grafana dashboards (Node Exporter 1860, cAdvisor 21743, Traefik 17346)
   ansible.builtin.copy:
     src: dashboards/

@@ -6,6 +6,10 @@ services:
     image: {{ timescaledb_image }}
     container_name: timescaledb
     restart: unless-stopped
+    # Qui meurt en premier si la VM manque de mémoire, plutôt que de laisser
+    # le noyau choisir au score — c'est-à-dire souvent le plus gros, donc la
+    # base. La base ne se sacrifie pas : la tuer en pleine écriture coûte une reprise.
+    oom_score_adj: -500
 
     ports:
       - "{{ timescaledb_bind_address }}:{{ timescaledb_port }}:5432"

@@ -1,0 +1,264 @@
+# Déployé par le rôle Ansible "monitoring" — ne pas éditer sur l'hôte.
+#
+# Règles d'alerte Grafana, provisionnées au démarrage. Elles ne notifient
+# personne : sans point de contact, elles s'allument dans l'interface et rien
+# d'autre. C'est un choix — la VM n'a pas de relais sortant vérifié, et une
+# alerte qui échoue à partir est pire qu'une alerte qu'on sait devoir aller
+# regarder.
+#
+# Deux familles, et la seconde est la raison d'être du fichier.
+#
+# La première interroge Prometheus : elle voit la MACHINE, mémoire, plafonds,
+# unités systemd. C'est ce qui manquait le 8 septembre au moment de décider
+# s'il fallait couper.
+#
+# La seconde interroge Loki : elle voit la CHAÎNE. Aucune métrique n'existe
+# pour « l'ETL publie zéro heure » ou « les sept sites ont échoué » — ces
+# pannes ne vivent que dans les journaux, et elles y sont restées cinq jours
+# sans que personne ne les voie. Loki et promtail étaient déjà là ; il ne
+# manquait que la question.
+#
+# Les UID des sources de données sont fixés dans datasources.yml.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: capacite
+    folder: EnerVision
+    interval: {{ monitoring_alert_interval }}
+    rules:
+      - uid: enervision-memoire-vm
+        title: Mémoire de la VM
+        # 85 % et non 95 : au-delà, il ne reste plus assez de marge pour
+        # qu'un traitement daté démarre, et c'est justement la nuit que
+        # personne ne regarde.
+        condition: seuil
+        for: 10m
+        labels:
+          severity: critique
+        annotations:
+          summary: >-
+            Moins de {{ 100 - monitoring_alert_memory_percent }} % de mémoire
+            disponible depuis 10 minutes.
+          runbook: >-
+            docker stats --no-stream. Si un conteneur dépasse son ordinaire,
+            c'est lui ; sinon la somme des plafonds dépasse la RAM et il faut
+            en retirer un de la VM.
+        data:
+          - refId: mesure
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: mesure
+              instant: true
+              expr: >-
+                1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes
+          - refId: seuil
+            datasourceUid: __expr__
+            model:
+              refId: seuil
+              type: threshold
+              expression: mesure
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [{{ monitoring_alert_memory_percent / 100 }}]
+        noDataState: NoData
+        execErrState: Error
+
+      - uid: enervision-conteneur-au-plafond
+        title: Conteneur près de son plafond mémoire
+        # Un conteneur tué à son plafond redémarre et le symptôme disparaît :
+        # sans cette alerte, seul le journal en garde trace. mlflow tient
+        # 98 % du sien en régime normal — c'est exactement ce qu'il faut voir
+        # venir.
+        condition: seuil
+        for: 10m
+        labels:
+          severity: avertissement
+        annotations:
+          summary: >-
+            Un conteneur consomme plus de
+            {{ monitoring_alert_container_percent }} % de son plafond.
+          runbook: >-
+            Relever le plafond, ou réduire ce que le service garde en
+            mémoire. Attention à la somme : elle dépasse déjà la RAM.
+        data:
+          - refId: mesure
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: mesure
+              instant: true
+              expr: >-
+                container_memory_working_set_bytes{name!=""}
+                / container_spec_memory_limit_bytes{name!=""} > 0
+          - refId: seuil
+            datasourceUid: __expr__
+            model:
+              refId: seuil
+              type: threshold
+              expression: mesure
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [{{ monitoring_alert_container_percent / 100 }}]
+        noDataState: NoData
+        execErrState: Error
+
+      - uid: enervision-unite-en-echec
+        title: Traitement daté en échec
+        # Le code de sortie de drift EST son verdict : 2 signifie dérive, et
+        # l'unité reste volontairement en `failed` pour que ça se voie. Cette
+        # alerte est donc le seul endroit où ce verdict remonte.
+        condition: seuil
+        for: 5m
+        labels:
+          severity: avertissement
+        annotations:
+          summary: Une unité systemd de la chaîne est en échec.
+          runbook: >-
+            systemctl status <unite> ; journalctl -u <unite> -n 100.
+            Pour drift, `systemctl show -p ExecMainStatus drift.service` :
+            2 = dérive du modèle, 1 = le calcul a échoué.
+        data:
+          - refId: mesure
+            relativeTimeRange: {from: 300, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: mesure
+              instant: true
+              expr: 'node_systemd_unit_state{state="failed"} == 1'
+          - refId: seuil
+            datasourceUid: __expr__
+            model:
+              refId: seuil
+              type: threshold
+              expression: mesure
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+        noDataState: NoData
+        execErrState: Error
+
+  - orgId: 1
+    name: chaine
+    folder: EnerVision
+    interval: {{ monitoring_alert_interval }}
+    rules:
+      - uid: enervision-etl-sans-variable
+        title: L'ETL ne publie aucune variable
+        # La panne la plus coûteuse de la semaine du 8 septembre, et la plus
+        # silencieuse : l'ETL lit cent mille mesures, en enrichit trente
+        # mille, publie zéro heure, et ne lève rien. serving n'a alors rien à
+        # lire, même avec un modèle promu.
+        condition: seuil
+        for: 0m
+        labels:
+          severity: critique
+        annotations:
+          summary: Deux cycles ETL consécutifs n'ont publié aucune heure.
+          runbook: >-
+            docker logs enervision-etl | tail -40. Un avertissement nomme la
+            colonne qui a vidé la journée : `lag_168h absent sur N` signifie
+            que la collecte est plus jeune que le décalage — voir l'amorçage,
+            étape 10 bis du premier déploiement.
+        data:
+          - refId: mesure
+            relativeTimeRange: {from: 7200, to: 0}
+            datasourceUid: loki
+            model:
+              refId: mesure
+              queryType: instant
+              expr: >-
+                count_over_time({container="enervision-etl"}
+                |= "0 heure(s) publiée(s)" [2h])
+          - refId: seuil
+            datasourceUid: __expr__
+            model:
+              refId: seuil
+              type: threshold
+              expression: mesure
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [1]
+        noDataState: OK
+        execErrState: Error
+
+      - uid: enervision-predictions-non-archivees
+        title: Aucune prédiction archivée
+        # Le job rend un code non nul quand TOUS les sites ont échoué, et sa
+        # boucle shell l'absorbe pour ne pas mourir. Sans cette alerte, le
+        # dashboard reste simplement vide.
+        condition: seuil
+        for: 0m
+        labels:
+          severity: critique
+        annotations:
+          summary: Le rafraîchissement des prédictions a échoué sur tous les sites.
+          runbook: >-
+            docker logs enervision-predict-cron | tail -30. ConnectError =
+            serving injoignable ; 401 = PREDICT_API_KEY différente de
+            SERVING_API_KEY ; UnknownModelError = aucun modèle promu.
+        data:
+          - refId: mesure
+            relativeTimeRange: {from: 7200, to: 0}
+            datasourceUid: loki
+            model:
+              refId: mesure
+              queryType: instant
+              expr: >-
+                count_over_time({container="enervision-predict-cron"}
+                |= "Tous les sites ont échoué" [2h])
+          - refId: seuil
+            datasourceUid: __expr__
+            model:
+              refId: seuil
+              type: threshold
+              expression: mesure
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+        noDataState: OK
+        execErrState: Error
+
+      - uid: enervision-collecte-arretee
+        title: La collecte n'écrit plus
+        # Le poller tourne une fois par minute. Deux heures sans un seul tick
+        # journalisé signifient qu'il est mort, bloqué, ou que la source ne
+        # répond plus — et la chaîne entière repose sur lui.
+        condition: seuil
+        for: 0m
+        labels:
+          severity: critique
+        annotations:
+          summary: Aucun tick de collecte journalisé depuis deux heures.
+          runbook: >-
+            docker ps --filter name=enervision-collector-poller ;
+            docker logs enervision-collector-poller | tail -30. Vérifier
+            aussi la source amont, un ConnectError s'y voit directement.
+        data:
+          - refId: mesure
+            relativeTimeRange: {from: 7200, to: 0}
+            datasourceUid: loki
+            model:
+              refId: mesure
+              queryType: instant
+              expr: >-
+                count_over_time({container="enervision-collector-poller"}
+                |= "tick :" [2h])
+          - refId: seuil
+            datasourceUid: __expr__
+            model:
+              refId: seuil
+              type: threshold
+              expression: mesure
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+        noDataState: Alerting
+        execErrState: Error

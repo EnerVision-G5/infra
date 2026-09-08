@@ -143,9 +143,20 @@ services:
       - --path.procfs=/host/proc
       - --path.sysfs=/host/sys
       - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+      # Sans ce collecteur, une unité systemd en échec n'existe pas pour
+      # Prometheus : ni un entraînement tué à son plafond, ni un drift qui
+      # annonce une dérive par son code de sortie. Ils sont pourtant la
+      # moitié de ce qu'il y a à surveiller sur cette machine.
+      - --collector.systemd
+      - --collector.systemd.unit-include=^(training|drift|collector-backfill|etl-backfill)\.service$$
 
     volumes:
       - /:/host:ro,rslave
+      # Le collecteur systemd parle au gestionnaire par sa socket privée.
+      # Sans ce montage il démarre, ne remonte aucune unité, et ne le dit
+      # qu'en DEBUG — une supervision muette qui a l'air en place.
+      # Pas de :ro : s'y connecter demande le droit d'écriture.
+      - /run/systemd/private:/run/systemd/private
 
     networks:
       - monitoring_network

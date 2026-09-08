@@ -60,6 +60,71 @@ Requête type dans Grafana → Explore → source **Loki** :
     | cAdvisor | 21743 |
     | Traefik | 17346 |
 
+## Alertes
+
+Provisionnées comme les dashboards, dans `provisioning/alerting/` — donc
+**non modifiables depuis l'UI**, et perdues si on les édite là.
+
+**Aucun point de contact.** Les alertes s'allument dans Grafana et ne
+notifient personne : la VM n'a pas de relais sortant vérifié, et une alerte
+qui échoue à partir est pire qu'une alerte qu'on sait devoir aller regarder.
+Ajouter un webhook plus tard ne touche que ce fichier.
+
+Deux groupes, et le second est la vraie nouveauté.
+
+| Alerte | Source | Se déclenche quand |
+|---|---|---|
+| Mémoire de la VM | Prometheus | moins de 15 % disponible, 10 min |
+| Conteneur près de son plafond | Prometheus | > 90 % de SON plafond, 10 min |
+| Traitement daté en échec | Prometheus | une unité systemd `failed`, 5 min |
+| L'ETL ne publie aucune variable | Loki | 2 cycles à `0 heure(s) publiée(s)` |
+| Aucune prédiction archivée | Loki | `Tous les sites ont échoué` |
+| La collecte n'écrit plus | Loki | aucun `tick :` depuis 2 h |
+
+Le groupe `capacite` interroge Prometheus : il voit la **machine**. Le groupe
+`chaine` interroge Loki : il voit la **chaîne**. Cette seconde famille existe
+parce qu'aucune métrique ne dit « l'ETL publie zéro heure » ou « les sept
+sites ont échoué » — ces pannes ne vivent que dans les journaux, et elles y
+sont restées cinq jours sans que personne ne les voie. Loki et promtail
+étaient déjà là ; il ne manquait que la question.
+
+Chaque règle porte une annotation `runbook` : la commande exacte à taper,
+lisible depuis l'alerte elle-même.
+
+`node-exporter` porte désormais `--collector.systemd` et le montage de
+`/run/systemd/private`. Sans ce montage il démarre, ne remonte aucune unité,
+et ne le dit qu'en DEBUG — une supervision muette qui a l'air en place.
+
+## Reprise automatique
+
+Les traitements datés (`training`, `drift`, `collector-backfill`,
+`etl-backfill`) rejouent **une seule fois** après un échec, un quart d'heure
+plus tard (`Restart=on-failure`, `RestartSec`, `StartLimitBurst=2`). Un job
+tué à son plafond mémoire échouerait de la même façon en repartant aussitôt ;
+un quart d'heure plus tard, la machine peut avoir rendu ce qui manquait.
+Au-delà, l'unité reste en échec — et l'alerte « traitement daté en échec » le
+dit.
+
+!!! warning "`drift` ne rejoue jamais sur le code 2"
+    `RestartPreventExitStatus=2` : le code 2 est un **verdict** — dérive
+    constatée — pas une panne. Le rejouer ne changerait rien à ce qu'il a
+    mesuré, et masquerait ce qu'il annonce.
+
+Les services longs, eux, sont en `restart: unless-stopped` : un kill par le
+cgroup les fait repartir seuls.
+
+Enfin, chaque conteneur porte un `oom_score_adj` qui décide **qui meurt en
+premier** si la VM manque de mémoire, plutôt que de laisser le noyau choisir
+au score — c'est-à-dire souvent le plus gros, donc la base :
+
+| `oom_score_adj` | Conteneurs |
+|---|---|
+| −500 | `timescaledb`, `traefik` |
+| −200 | `enervision-api`, `enervision-serving` |
+| +300 | `enervision-mlflow` |
+| +500 | `front`, `collector-poller`, `etl`, `predict-cron` |
+| +800 | `training`, `drift` |
+
 ## Points d'attention
 
 !!! warning "cAdvisor dépend du driver de stockage Docker et de sa version"

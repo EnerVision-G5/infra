@@ -42,3 +42,26 @@ monitoring_node_exporter_cpu_limit: "0.25"
 
 monitoring_cadvisor_memory_limit: 256M
 monitoring_cadvisor_cpu_limit: "0.5"
+
+# --------------------------------------------------------------------------
+# Alertes Grafana, provisionnées au démarrage.
+#
+# Aucun point de contact : elles s'allument dans l'interface et ne
+# notifient personne. La VM n'a pas de relais sortant vérifié, et une
+# alerte qui échoue à partir est pire qu'une alerte qu'on sait devoir
+# aller regarder. Ajouter un webhook plus tard ne change que ce fichier.
+# --------------------------------------------------------------------------
+monitoring_alerting_enabled: true
+
+# Cadence d'évaluation. Une minute : les pannes visées se mesurent en
+# heures, évaluer plus souvent ne ferait que charger Loki.
+monitoring_alert_interval: 1m
+
+# Part de la mémoire de la VM au-delà de laquelle on alerte. 85 % et non
+# 95 : au-delà il ne reste plus de quoi démarrer un traitement daté.
+monitoring_alert_memory_percent: 85
+
+# Part de SON plafond au-delà de laquelle un conteneur alerte. mlflow tient
+# 98 % du sien en régime normal : c'est ce qu'il faut voir venir avant que
+# le cgroup ne le tue.
+monitoring_alert_container_percent: 90

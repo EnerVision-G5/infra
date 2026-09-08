@@ -10,6 +10,10 @@ services:
     image: {{ applications_image_namespace }}/{{ applications_training_image_name }}:{{ applications_training_sha }}
     container_name: enervision-mlflow
     restart: unless-stopped
+    # Qui meurt en premier si la VM manque de mémoire, plutôt que de laisser
+    # le noyau choisir au score — c'est-à-dire souvent le plus gros, donc la
+    # base. Registre consultable : reconstructible, et le plus gros résident de la VM.
+    oom_score_adj: 300
 
     # L'image sert `python -m training` : le registre redéclare son point
     # d'entrée pour lancer le serveur au lieu d'un entraînement.
