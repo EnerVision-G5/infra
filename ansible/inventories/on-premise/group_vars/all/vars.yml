@@ -119,15 +119,15 @@ applications_enabled:
 # (sha-<git-sha>), lu dans le résumé du run CD ou la page Packages du dépôt
 # de service, et modifié uniquement par PR : c'est elle qui trace la mise en
 # production. Procédure complète dans le README, « Mettre en production ».
-applications_front_sha: "sha-eb29a117dae590a8d0bbc9030f19ed2c2dae3246"
-applications_api_sha: "sha-665d1e5a553e7cecbf4e19e5f9d01228fdf061a3"
+applications_front_sha: "sha-6ab170d12848bd3959ddbcc619b0dcebe0376c41"
+applications_api_sha: "sha-2e27cf3cccf61a6c550122d81d9def4e3b166c44"
 # serving, training et etl sont publiés depuis le dépôt predict : un même
 # commit leur donne le même tag, sur trois images distinctes. C'est le couple
 # image:tag qui identifie une version, et le rôle contrôle son unicité là.
-applications_serving_sha: "sha-48709c643fd223e9e23326754c9609409e685189"
-applications_training_sha: "sha-da9407f5ad00560406ea4fc46d7a3d398610c452"
-applications_etl_sha: "sha-da9407f5ad00560406ea4fc46d7a3d398610c452"
-applications_collector_sha: "sha-48709c643fd223e9e23326754c9609409e685189"
+applications_serving_sha: "sha-2bb82b9242d6f6fde24253e62bb93700a56466fb"
+applications_training_sha: "sha-2bb82b9242d6f6fde24253e62bb93700a56466fb"
+applications_etl_sha: "sha-2bb82b9242d6f6fde24253e62bb93700a56466fb"
+applications_collector_sha: "sha-2bb82b9242d6f6fde24253e62bb93700a56466fb"
 
 # DOCKER
 docker_external_networks:
