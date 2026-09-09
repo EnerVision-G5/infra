@@ -96,16 +96,17 @@ applications_mlflow_host: "mlflow.enervision.com"
 
 # --- Serving (image predict/serving) : contenu du .env (serving.env.j2) ----
 applications_serving_env: "production"
-applications_serving_model_uri: "models:/enervision_xgboost@champion"
+applications_serving_model_uri: "models:/enervision_consommation@champion"
 
 # --- Training (image predict/training) : .env + timer systemd -------------
 applications_training_env: "production"
 applications_training_experiment: "enervision-consumption"
 applications_training_history_days: 90
-# Le timer n'apprend pas et ne promeut pas dans le même geste : la mise en
-# service d'une version se décide après lecture de ses métriques, par
-# `docker compose --profile jobs run --rm training --promote-version <n>`.
-applications_training_promote: false
+# Le timer arbitre puis met en service dans le même geste : il oppose les
+# familles sur un banc commun et promeut le vainqueur, sous réserve qu'il
+# batte la persistance et ne dégrade pas le champion en place.
+applications_training_challenge: true
+applications_training_promote: true
 applications_training_on_calendar: "Sun *-*-* 03:30:00"
 
 # --- Collector (poller + rattrapage) : contenu du .env généré (collector.env.j2)
