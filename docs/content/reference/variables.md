@@ -63,10 +63,11 @@ Les rôles portent chacun leurs propres défauts dans `defaults/main.yml` ;
 | `applications_api_access_token_expire_minutes` | `60` |
 | `applications_predict_storage_root` | `s3://enervision-features` |
 | `applications_predict_s3_endpoint_url` | `http://garage:3900` |
-| `applications_serving_model_uri` | `models:/enervision_xgboost@champion` |
+| `applications_serving_model_uri` | `models:/enervision_consommation@champion` |
 | `applications_training_experiment` | `enervision-consumption` |
 | `applications_training_history_days` | `90` |
-| `applications_training_promote` | `false` |
+| `applications_training_challenge` | `true` |
+| `applications_training_promote` | `true` |
 | `applications_training_on_calendar` | `Sun *-*-* 03:30:00` |
 | `applications_collector_env` | `production` |
 | `applications_collector_mock_api_url` | `http://10.105.200.45:8000` *(à vérifier)* |
