@@ -14,6 +14,8 @@ applications_api_image_name: api
 applications_collector_image_name: collector
 applications_raw_archiver_image_name: raw-archiver
 applications_ingester_image_name: ingester
+applications_flink_image_name: flink
+applications_prediction_api_image_name: prediction-api
 # Image du dépôt `database` : source de vérité du schéma. N'est pas une
 # application (pas dans le catalogue) — le rôle la lance en one-shot
 # `alembic upgrade head` avant de déployer les conteneurs.
@@ -30,6 +32,8 @@ applications_api_sha: ""
 applications_collector_sha: ""
 applications_raw_archiver_sha: ""
 applications_ingester_sha: ""
+applications_flink_sha: ""
+applications_prediction_api_sha: ""
 # Vide → le rôle ne joue pas la migration (schéma géré ailleurs / à la main).
 applications_database_sha: ""
 
@@ -73,6 +77,17 @@ applications_raw_archiver_cpu_limit: "0.5"
 # Plafonds PAR conteneur ingester (raw-ingester, enriched-ingester, site-sync).
 applications_ingester_memory_limit: 384M
 applications_ingester_cpu_limit: "0.5"
+
+# Flink : jobmanager + taskmanager. Flink a un plancher mémoire élevé ; ces
+# valeurs sont au ras du minimum pour un job Kafka→Kafka léger, à remonter si
+# le taskmanager peine (OutOfMemory / backpressure).
+applications_flink_jobmanager_memory_limit: 1G
+applications_flink_taskmanager_memory_limit: 1600M
+applications_flink_cpu_limit: "1.0"
+
+# prediction-api : charge mlflow + scikit-learn + pandas + le modèle pyfunc.
+applications_prediction_api_memory_limit: 768M
+applications_prediction_api_cpu_limit: "1.0"
 
 # Connexion applicative de l'API à la base, construite depuis les variables du
 # rôle postgres (mot de passe chiffré avec ansible-vault). L'hôte `postgres`
@@ -182,6 +197,46 @@ applications_ingester_mock_api_url: >-
 applications_ingester_site_sync_enabled: true
 
 # --------------------------------------------------------------------------
+# Flink (dépôt `flink`) — cluster session (jobmanager + taskmanager), sur
+# lequel le rôle soumet EnergyRollingJob (energy.data.raw → energy.data.enriched,
+# Kafka → Kafka, sans stockage). Pas de HA : un redémarrage du cluster perd le
+# job, le rôle le resoumet s'il n'est plus listé.
+# --------------------------------------------------------------------------
+applications_flink_networks:
+  - broker_network
+applications_flink_taskmanager_slots: 2
+applications_flink_ui_bind_address: "127.0.0.1"
+applications_flink_ui_port: 8083
+# Job soumis par le rôle.
+applications_flink_job_class: "com.enervision.EnergyRollingJob"
+applications_flink_job_name: "EnerVision energy enrichment"
+applications_flink_jar: "/opt/flink/usrlib/enervision-flink-job.jar"
+# Env du job (défauts du code — repris ici pour être explicites/surchargeables).
+applications_flink_kafka_bootstrap: "kafka:9092"
+applications_flink_kafka_input_topic: "energy.data.raw"
+applications_flink_kafka_output_topic: "energy.data.enriched"
+applications_flink_kafka_group_id: "enervision-flink-enrichment-v2"
+
+# --------------------------------------------------------------------------
+# prediction-api (dépôt `prediction-api`) — service d'inférence HTTP (:9100).
+# Lit l'historique de `energy_readings` (SQL brut, pas de modèle partagé) et
+# résout `models:/enervision_consumption@champion` dans MLflow au premier appel.
+# Appelé par l'API applicative ; publié sur la boucle locale pour le test.
+# Répond en erreur tant qu'aucun modèle n'est promu (trainer pas encore là).
+# --------------------------------------------------------------------------
+applications_prediction_api_networks:
+  - db_network
+  - ml_network
+applications_prediction_api_bind_address: "127.0.0.1"
+applications_prediction_api_port: 9100
+applications_prediction_api_database_url: >-
+  postgresql+psycopg://{{ postgres_user }}:{{ postgres_password | urlencode }}@postgres:5432/{{ postgres_db }}
+applications_prediction_api_mlflow_tracking_uri: "http://mlflow:5000"
+applications_prediction_api_mlflow_model: "enervision_consumption"
+applications_prediction_api_mlflow_alias: "champion"
+applications_prediction_api_history_hours: 200
+
+# --------------------------------------------------------------------------
 # Identités applicatives Azure — accès aux blobs SANS clé de compte, par
 # fédération d'identité (cf. terraform/docs/identites-applicatives.md).
 # Le service signe un JWT court avec la clé privée de l'émetteur de
@@ -259,6 +314,15 @@ applications_services_catalog:
     kind: worker
     image: "{{ applications_image_namespace }}/{{ applications_ingester_image_name }}:{{ applications_ingester_sha }}"
     sha: "{{ applications_ingester_sha }}"
+  # Une entrée, deux conteneurs (jobmanager + taskmanager) + soumission du job.
+  - name: flink
+    kind: worker
+    image: "{{ applications_image_namespace }}/{{ applications_flink_image_name }}:{{ applications_flink_sha }}"
+    sha: "{{ applications_flink_sha }}"
+  - name: prediction-api
+    kind: web
+    image: "{{ applications_image_namespace }}/{{ applications_prediction_api_image_name }}:{{ applications_prediction_api_sha }}"
+    sha: "{{ applications_prediction_api_sha }}"
 
 # Applications effectivement déployées. Filtre le catalogue : une application
 # absente n'est ni configurée, ni tirée, ni démarrée. Surchargeable dans
@@ -269,6 +333,8 @@ applications_enabled:
   - collector
   - raw-archiver
   - ingester
+  - flink
+  - prediction-api
 
 # Liste consommée par les tasks : le catalogue restreint aux applications
 # activées, dans l'ordre du catalogue.

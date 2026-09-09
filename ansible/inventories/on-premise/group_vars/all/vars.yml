@@ -78,12 +78,17 @@ applications_raw_archiver_workload_subject: "dev/api-rw"
 
 # Applications déployées. MLflow est déployé par le rôle `mlflow`
 # (provision.yml), pas ici.
+# `api` retiré : son schéma (`mesure`, `site`, `app_user`…) est incompatible
+# avec celui du dépôt `database` (`energy_readings`, `sites`, `users`…), et son
+# entrypoint `alembic upgrade head` entre en collision avec `alembic_version`.
+# À réactiver quand ses modèles seront portés sur le schéma `database`.
 applications_enabled:
   - front
-  - api
   - collector
   - raw-archiver
   - ingester
+  - flink
+  - prediction-api
 
 # Version déployée de chaque image : tag GHCR immuable d'un commit précis
 # (sha-<git-sha>), lu dans le résumé du run CD ou la page Packages du dépôt
@@ -94,6 +99,8 @@ applications_api_sha: "sha-665d1e5a553e7cecbf4e19e5f9d01228fdf061a3"
 applications_collector_sha: "sha-ba12e451bf5b75d690fa81c7050013f14f8347dd"
 applications_raw_archiver_sha: "sha-facd892ef46aea79ce08d369ee0f6b981b3613da"
 applications_ingester_sha: "sha-e9056c51f76cf14c442932d7e81e69a041af3147"
+applications_flink_sha: "sha-ef073e975a07b18fb92484a5bab51b2e502c1a56"
+applications_prediction_api_sha: "sha-8703a58fe3b976293fc93d2f832e02e20883942e"
 # Image du dépôt `database` — jouée en `alembic upgrade head` avant les apps.
 applications_database_sha: "sha-7fee9bb840413a8c7255c8b5f203e40b970b9538"
 

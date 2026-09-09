@@ -29,13 +29,15 @@ mlflow_artifacts_destination: "/mlflow/artifacts"
 # Vault. Lue seulement quand mlflow_artifacts_destination est une URI wasbs:// ;
 # le rôle refuse alors de déployer sans elle (cf. tasks/main.yml).
 
-# MLflow 3 rejette tout en-tête Host qu'il ne reconnaît pas (protection contre
-# le DNS rebinding), y compris venant de ses propres clients serving / training
-# qui joignent http://{{ mlflow_container_name }}:{{ mlflow_port }}.
-mlflow_allowed_hosts:
-  - "{{ mlflow_container_name }}:{{ mlflow_port }}"
-  - "localhost:{{ mlflow_port }}"
-  - "127.0.0.1:{{ mlflow_port }}"
+# Liste blanche des en-têtes Host (protection DNS rebinding). L'option
+# `--allowed-hosts` du serveur MLflow n'existe QU'À PARTIR DE 3.2 — sur
+# mlflow_base_image v3.1.x elle fait planter le serveur (`No such option`).
+# Laissée vide tant que l'image n'est pas >= 3.2 ; le compose omet alors le
+# drapeau. À renseigner en même temps qu'un bump de mlflow_base_image :
+#   - "{{ mlflow_container_name }}:{{ mlflow_port }}"
+#   - "localhost:{{ mlflow_port }}"
+#   - "127.0.0.1:{{ mlflow_port }}"
+mlflow_allowed_hosts: []
 
 # Garde-fous ressources. Le serveur charge mlflow + le client Azure ; 2G laisse
 # une marge au-dessus du socle mesuré, 1 vCPU suffit (SQLite + proxy d'artefacts).

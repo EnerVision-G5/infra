@@ -250,3 +250,37 @@
   loop: "{{ applications_services }}"
   loop_control:
     label: "{{ item.name }}"
+
+# --------------------------------------------------------------------------
+# Flink : cluster session sans HA → le job graph n'est pas persisté. Après un
+# (re)démarrage du cluster il faut resoumettre EnergyRollingJob. Idempotent :
+# on regarde `flink list` et on ne soumet que s'il n'y est pas.
+# --------------------------------------------------------------------------
+- name: Flink — soumission du job d'enrichissement
+  when: "'flink' in applications_enabled"
+  block:
+    - name: Attendre que le jobmanager Flink réponde
+      ansible.builtin.uri:
+        url: "http://{{ applications_flink_ui_bind_address }}:{{ applications_flink_ui_port }}/overview"
+        status_code: 200
+      register: applications_flink_overview
+      retries: 30
+      delay: 5
+      until: applications_flink_overview.status == 200
+
+    - name: Lister les jobs Flink en cours
+      community.docker.docker_container_exec:
+        container: flink-jobmanager
+        command: flink list
+      register: applications_flink_list
+      changed_when: false
+
+    - name: Soumettre EnergyRollingJob s'il ne tourne pas
+      community.docker.docker_container_exec:
+        container: flink-jobmanager
+        command: >-
+          flink run -d -c {{ applications_flink_job_class }}
+          {{ applications_flink_jar }}
+      changed_when: true
+      when: applications_flink_job_name not in
+        (applications_flink_list.stdout | default(''))

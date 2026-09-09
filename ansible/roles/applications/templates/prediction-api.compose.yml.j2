@@ -1,0 +1,53 @@
+# Déployé par le rôle Ansible "applications" — ne pas éditer sur l'hôte.
+# Service d'inférence (dépôt `prediction-api`) — HTTP :9100. Lit l'historique
+# de `energy_readings` et sert `models:/{{ applications_prediction_api_mlflow_model }}@{{ applications_prediction_api_mlflow_alias }}`.
+# Publié sur la boucle locale (tunnel SSH pour tester) ; l'API applicative
+# l'appellera par le nom de conteneur sur ml_network une fois réactivée.
+services:
+  prediction-api:
+    image: {{ applications_image_namespace }}/{{ applications_prediction_api_image_name }}:{{ applications_prediction_api_sha }}
+    container_name: enervision-prediction-api
+    restart: unless-stopped
+    # Service en ligne : reconstruit son état (modèle) au démarrage.
+    oom_score_adj: 200
+
+    env_file:
+      - .env
+
+    ports:
+      - "{{ applications_prediction_api_bind_address }}:{{ applications_prediction_api_port }}:{{ applications_prediction_api_port }}"
+
+    networks:
+{% for network in applications_prediction_api_networks %}
+      - {{ network }}
+{% endfor %}
+
+    # /health est trivial (pas de dépendance) ; /ready dit si le modèle est
+    # résolu. On sonde /health : le service est "up" même sans modèle promu.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://localhost:{{ applications_prediction_api_port }}/health')"
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+    deploy:
+      resources:
+        limits:
+          memory: {{ applications_prediction_api_memory_limit }}
+          cpus: "{{ applications_prediction_api_cpu_limit }}"
+
+networks:
+{% for network in applications_prediction_api_networks %}
+  {{ network }}:
+    external: true
+    name: {{ network }}
+{% endfor %}

@@ -25,7 +25,11 @@ services:
       - --backend-store-uri={{ mlflow_backend_store_uri }}
       - --artifacts-destination={{ mlflow_artifacts_destination }}
       - --serve-artifacts
+{% if mlflow_allowed_hosts | length > 0 %}
+      # --allowed-hosts n'existe qu'à partir de MLflow 3.2 — laisser
+      # mlflow_allowed_hosts vide sur une image plus ancienne (v3.1.x).
       - --allowed-hosts={{ mlflow_allowed_hosts | join(',') }}
+{% endif %}
 
     env_file:
       - .env

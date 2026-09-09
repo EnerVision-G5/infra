@@ -1,0 +1,64 @@
+# Déployé par le rôle Ansible "applications" — ne pas éditer sur l'hôte.
+# Cluster Flink en mode session : jobmanager + taskmanager, longue durée. Le
+# rôle y soumet EnergyRollingJob (energy.data.raw → energy.data.enriched).
+# Pas de HA : un redémarrage du cluster perd le job (le rôle le resoumet).
+
+x-flink-common: &flink-common
+  image: {{ applications_image_namespace }}/{{ applications_flink_image_name }}:{{ applications_flink_sha }}
+  restart: unless-stopped
+  env_file:
+    - .env
+  environment:
+    # Multi-ligne : interprété par l'entrypoint de l'image Flink.
+    FLINK_PROPERTIES: |
+      jobmanager.rpc.address: jobmanager
+      taskmanager.numberOfTaskSlots: {{ applications_flink_taskmanager_slots }}
+      execution.checkpointing.interval: 30 s
+      restart-strategy.type: fixed-delay
+      restart-strategy.fixed-delay.attempts: 5
+      restart-strategy.fixed-delay.delay: 10 s
+  networks:
+{% for network in applications_flink_networks %}
+    - {{ network }}
+{% endfor %}
+    - flink_internal
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+
+services:
+  jobmanager:
+    <<: *flink-common
+    container_name: flink-jobmanager
+    command: jobmanager
+    # UI Flink — boucle locale de l'hôte, consultée par tunnel SSH.
+    ports:
+      - "{{ applications_flink_ui_bind_address }}:{{ applications_flink_ui_port }}:8081"
+    deploy:
+      resources:
+        limits:
+          memory: {{ applications_flink_jobmanager_memory_limit }}
+          cpus: "{{ applications_flink_cpu_limit }}"
+
+  taskmanager:
+    <<: *flink-common
+    container_name: flink-taskmanager
+    command: taskmanager
+    depends_on:
+      - jobmanager
+    deploy:
+      resources:
+        limits:
+          memory: {{ applications_flink_taskmanager_memory_limit }}
+          cpus: "{{ applications_flink_cpu_limit }}"
+
+networks:
+{% for network in applications_flink_networks %}
+  {{ network }}:
+    external: true
+    name: {{ network }}
+{% endfor %}
+  flink_internal:
+    driver: bridge
