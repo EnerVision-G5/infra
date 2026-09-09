@@ -16,25 +16,21 @@ dans **Kafka** (topic `energy.data.raw`). Premier maillon de la chaîne
 
 ## Configuration
 
-Le code est aujourd'hui **entièrement hardcodé** :
+Lue de l'environnement (`os.getenv`), via le `.env` généré
+(`collector.env.j2`) :
 
-| Réglage | Valeur (dans le code) |
-|---|---|
-| Bootstrap Kafka | `kafka:9092` |
-| API source | `http://mock-api:8000` |
-| Topic | `energy.data.raw` |
-| Sites | `SITE001`…`SITE005` |
-| Intervalle | 60 s |
+| Clé | Variable Ansible | Défaut |
+|---|---|---|
+| `MOCK_API_URL` | `applications_collector_mock_api_url` | `http://mock-api:8000` — **surchargé dans `group_vars`** |
+| `KAFKA_BOOTSTRAP` | `applications_collector_kafka_bootstrap` | `kafka:9092` |
+| `KAFKA_TOPIC` | `applications_collector_kafka_topic` | `energy.data.raw` |
+| `POLL_INTERVAL` | `applications_collector_poll_interval` | `60` |
+| `SITES` (CSV) | `applications_collector_sites` | `SITE001…SITE005` |
 
-Le rôle lance donc l'image **telle quelle**. Le `.env` généré
-(`collector.env.j2`) est vide — il accueillera les `${VARIABLE}` quand le
-service deviendra configurable.
-
-!!! warning "`mock-api` doit être résoluble"
-    Le collector appelle `http://mock-api:8000`. Un conteneur nommé `mock-api`
-    doit exister sur l'un des réseaux de `applications_collector_networks`.
-    Tant que le mock-api n'a pas son rôle : ajouter son réseau à cette liste,
-    ou le déployer sur `broker_network`.
+L'API mock n'est **pas** un conteneur : c'est une adresse sur le réseau de
+l'hôte (aujourd'hui `http://192.168.8.180:8000`). Le collector la joint
+directement — le trafic sort par la passerelle Docker de l'hôte, aucun réseau
+Docker supplémentaire n'est nécessaire.
 
 ## Déploiement
 
@@ -57,5 +53,5 @@ d'unité systemd — c'est une opération ponctuelle d'amorçage.
 | Symptôme | Piste |
 |---|---|
 | `NoBrokersAvailable` / timeout Kafka | conteneur pas sur `broker_network`, ou broker down |
-| `httpx.ConnectError` vers `mock-api` | `mock-api` non résoluble — voir l'encart ci-dessus |
+| `httpx.ConnectError` vers l'API mock | `MOCK_API_URL` faux, hôte injoignable, ou pare-feu entre la VM et cette adresse |
 | aucun message dans `energy.data.raw` | vérifier `docker logs enervision-collector` |

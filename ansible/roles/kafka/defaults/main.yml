@@ -35,8 +35,11 @@ kafka_ui_port: 8080
 # Garde-fous ressources.
 kafka_memory_limit: 1G
 kafka_cpu_limit: "1.0"
-kafka_ui_memory_limit: 256M
-kafka_ui_cpu_limit: "0.25"
+# kafka-ui est une appli Spring Boot / JVM : 256 Mo la faisait OOM-kill au
+# démarrage (restart loop). ~768 Mo laisse la JVM s'auto-dimensionner (heap à
+# ~25 % du plafond) avec de la marge pour un petit cluster.
+kafka_ui_memory_limit: 768M
+kafka_ui_cpu_limit: "0.5"
 
 # Topics créés au démarrage par le job kafka-init (idempotent : --if-not-exists).
 kafka_topics:

@@ -79,6 +79,11 @@ Les rôles portent chacun leurs propres défauts dans `defaults/main.yml` ;
 | `applications_api_auth_enabled` | `true` |
 | `applications_api_jwt_algorithm` | `HS256` |
 | `applications_api_access_token_expire_minutes` | `60` |
+| `applications_collector_mock_api_url` | `http://192.168.8.180:8000` *(change par environnement)* |
+| `applications_collector_kafka_bootstrap` *(défaut rôle)* | `kafka:9092` |
+| `applications_collector_kafka_topic` *(défaut rôle)* | `energy.data.raw` |
+| `applications_collector_poll_interval` *(défaut rôle)* | `60` |
+| `applications_collector_sites` *(défaut rôle)* | `SITE001,…,SITE005` |
 | `applications_collector_networks` *(défaut rôle)* | `[broker_network]` |
 
 ## Applications — versions déployées

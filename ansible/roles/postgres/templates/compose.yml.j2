@@ -52,8 +52,16 @@ services:
     ports:
       - "{{ postgres_pgweb_bind_address }}:{{ postgres_pgweb_port }}:8081"
 
+    # Paramètres séparés (PG*) plutôt qu'une URL postgres://… : le mot de passe
+    # peut contenir des caractères (?, !, @, /…) qui casseraient la chaîne.
+    # pgweb les lit et se connecte au démarrage.
     environment:
-      PGWEB_DATABASE_URL: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${POSTGRES_USER:?definir POSTGRES_USER dans .env}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?definir POSTGRES_PASSWORD dans .env}
+      PGDATABASE: ${POSTGRES_DB:?definir POSTGRES_DB dans .env}
+      PGSSLMODE: disable
 
     networks:
       - db_network

@@ -55,17 +55,17 @@ applications_api_access_token_expire_minutes: 60
 #   mlflow_artifacts_destination: "wasbs://<conteneur>@<compte>.blob.core.windows.net"
 
 # --- Collector (dépôt `collector`) : poller Kafka -----------------------
-# Le code est hardcodé (kafka:9092, http://mock-api:8000, topic, sites, 60 s) :
-# le rôle lance l'image telle quelle sur broker_network. `mock-api` doit y être
-# résoluble — voir applications_collector_networks (défaut du rôle).
+# Configuration via le .env généré (collector.env.j2). Seule l'URL de l'API
+# mock change d'un environnement à l'autre — le reste garde le défaut du rôle
+# (kafka:9092 / energy.data.raw / 60 s / SITE001..005).
+applications_collector_mock_api_url: "http://192.168.8.180:8000"
 
 # Applications déployées. MLflow est déployé par le rôle `mlflow`
-# (provision.yml), pas ici. `collector` est prêt côté rôle (catalogue +
-# templates) : l'ajouter ici une fois applications_collector_sha renseigné,
-# après le premier run du workflow cd.yml du dépôt `collector`.
+# (provision.yml), pas ici.
 applications_enabled:
   - front
   - api
+  - collector
 
 # Version déployée de chaque image : tag GHCR immuable d'un commit précis
 # (sha-<git-sha>), lu dans le résumé du run CD ou la page Packages du dépôt
@@ -73,9 +73,7 @@ applications_enabled:
 # production. Procédure complète dans le README, « Mettre en production ».
 applications_front_sha: "sha-eb29a117dae590a8d0bbc9030f19ed2c2dae3246"
 applications_api_sha: "sha-665d1e5a553e7cecbf4e19e5f9d01228fdf061a3"
-# À renseigner après le premier run du workflow cd.yml du dépôt `collector`,
-# puis ajouter `collector` à applications_enabled ci-dessus.
-applications_collector_sha: ""
+applications_collector_sha: "sha-ba12e451bf5b75d690fa81c7050013f14f8347dd"
 
 # DOCKER
 docker_external_networks:

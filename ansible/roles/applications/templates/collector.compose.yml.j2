@@ -1,10 +1,7 @@
 # Déployé par le rôle Ansible "applications" — ne pas éditer sur l'hôte.
 # Collector (dépôt `collector`) — poller : interroge l'API mock et pousse les
-# mesures dans Kafka (topic energy.data.raw). Processus long, sans port.
-#
-# Le code est actuellement hardcodé (bootstrap kafka:9092, http://mock-api:8000,
-# topic, sites, intervalle 60 s) : ce compose lance l'image telle quelle. Le
-# `.env` généré est vide pour l'instant — voir collector.env.j2.
+# mesures dans Kafka. Processus long, sans port. Configuration dans .env
+# (généré depuis collector.env.j2), lue par le code via os.getenv.
 services:
   collector:
     image: {{ applications_image_namespace }}/{{ applications_collector_image_name }}:{{ applications_collector_sha }}

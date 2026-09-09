@@ -61,8 +61,11 @@ applications_collector_cpu_limit: "0.5"
 # rôle postgres (mot de passe chiffré avec ansible-vault). L'hôte `postgres`
 # est le nom de conteneur du rôle, résolu sur db_network. Dialecte asyncpg
 # (SQLAlchemy asynchrone).
+#
+# `urlencode` sur le mot de passe : s'il contient ?, !, @, /, #, : … la chaîne
+# postgresql://… serait mal parsée. SQLAlchemy déchiffre ensuite le %XX.
 applications_api_database_url: >-
-  postgresql+asyncpg://{{ postgres_user }}:{{ postgres_password }}@postgres:5432/{{ postgres_db }}
+  postgresql+asyncpg://{{ postgres_user }}:{{ postgres_password | urlencode }}@postgres:5432/{{ postgres_db }}
 
 # --------------------------------------------------------------------------
 # API — variables du .env généré (api.env.j2). Clés = celles lues par
@@ -112,16 +115,24 @@ applications_front_prediction_source: "api"
 
 # --------------------------------------------------------------------------
 # Collector (dépôt `collector`) — poller : interroge l'API mock au fil de l'eau
-# et pousse les mesures dans Kafka (topic energy.data.raw). Processus long,
-# sans port ni route.
+# et pousse les mesures dans Kafka. Processus long, sans port ni route.
 #
-# Le code est actuellement HARDCODÉ (bootstrap kafka:9092, http://mock-api:8000,
-# topic, sites, intervalle 60 s) : aucune variable d'environnement n'est lue.
-# Le rôle lance donc l'image telle quelle. `mock-api` doit être résoluble sur
-# l'un des réseaux ci-dessous — à câbler quand le mock-api aura son rôle.
+# Configuration via le .env généré (collector.env.j2), lue par le code
+# (os.getenv). Le mock-api n'est pas un conteneur : c'est une adresse sur le
+# réseau de l'hôte — le collector la joint donc directement, pas par un réseau
+# Docker interne.
 # --------------------------------------------------------------------------
 applications_collector_networks:
   - broker_network
+
+# API source des mesures — OBLIGATOIRE, sans repli utilisable. Renseignée dans
+# group_vars (elle change d'un environnement à l'autre).
+applications_collector_mock_api_url: "http://mock-api:8000"
+applications_collector_kafka_bootstrap: "kafka:9092"
+applications_collector_kafka_topic: "energy.data.raw"
+applications_collector_poll_interval: 60
+# Sites interrogés, séparés par des virgules.
+applications_collector_sites: "SITE001,SITE002,SITE003,SITE004,SITE005"
 
 # --------------------------------------------------------------------------
 # Catalogue des applications connues. Le nom sert de sous-dossier et de préfixe

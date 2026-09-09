@@ -69,9 +69,9 @@ Détail dans [Déploiement › deploy.yml](../../deploiement/applications.md).
 
 Les images sont **construites une fois par commit** et déployées telles quelles
 sur des environnements aux domaines différents. Aucune adresse n'est figée au
-build : `api` et `front` lisent leur configuration de leur `.env` (généré par le
-rôle depuis le Vault et les variables). Le `collector` est pour l'instant
-hardcodé et ne lit rien.
+build : les trois services (`api`, `front`, `collector`) lisent leur
+configuration de leur `.env`, généré par le rôle depuis le Vault et les
+variables.
 
 ## Les services
 
