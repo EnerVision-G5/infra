@@ -353,7 +353,7 @@ applications_mlflow_cors_allowed_origins: >-
 applications_serving_env: production
 # Alias MLflow du modèle servi. Le déplacer dans le registre suffit à
 # promouvoir une version, sans redéployer le service.
-applications_serving_model_uri: "models:/enervision_xgboost@champion"
+applications_serving_model_uri: "models:/enervision_consommation@champion"
 
 # Clé de service exigée sur les routes du contrat d'inférence.
 #
@@ -414,10 +414,15 @@ applications_training_database_url: "{{ applications_predict_database_url }}"
 applications_training_experiment: "enervision-consumption"
 # Profondeur d'historique apprise, en journées (défaut du CLI training).
 applications_training_history_days: 90
-# false : la version entraînée reste challenger. Promouvoir est un geste
-# délibéré, pris après lecture des métriques du run — un modèle mis en service
-# par un timer changerait les prévisions sans que personne ne l'ait décidé.
-applications_training_promote: false
+# true : le timer oppose toutes les familles au lieu d'apprendre la seule
+# famille par défaut. Sans cela, une forêt qui prévoit mieux n'est jamais
+# mesurée, donc jamais servie.
+applications_training_challenge: true
+# true : le vainqueur est mis en service par le timer. Risque assumé — les
+# prévisions changent sans décision humaine — tenu par la règle de promotion,
+# qui exige de battre la persistance sans dégrader le champion. Repli :
+# `--promote-version <n> --force`.
+applications_training_promote: true
 # Hebdomadaire : le modèle apprend une saisonnalité hebdomadaire, et
 # réapprendre plus souvent coûterait des heures de calcul pour le même modèle.
 applications_training_on_calendar: "Sun *-*-* 03:30:00"
