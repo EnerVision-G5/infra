@@ -34,3 +34,7 @@
     - role: monitoring
       tags:
         - monitoring
+
+    - role: backup
+      tags:
+        - backup

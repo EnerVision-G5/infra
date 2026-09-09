@@ -1,0 +1,142 @@
+---
+- name: Sauvegarde activée
+  when: backup_enabled | bool
+  block:
+    - name: Vérifier que les paramètres de sauvegarde sont renseignés
+      ansible.builtin.assert:
+        that:
+          - backup_restic_password | default('') | length >= 32
+          - backup_workload_issuer_key | default('') | length > 0
+          - backup_azure_account_name | default('') | length > 0
+          - backup_azure_container | default('') | length > 0
+          - backup_azure_client_id | default('') | length > 0
+          - backup_azure_tenant_id | default('') | length > 0
+          - backup_workload_issuer | default('') | length > 0
+          - backup_workload_subject | default('') | length > 0
+          - backup_workload_kid | default('') | length > 0
+        fail_msg: >-
+          Le rôle backup exige : le mot de passe du dépôt restic
+          (>= 32 caractères, vault_backup_restic_password), la clé privée de
+          l'émetteur (vault_workload_issuer_key), et les coordonnées de
+          l'identité Azure (backup_azure_client_id / backup_azure_tenant_id à
+          relever après le `terraform apply` de PROD). Voir
+          docs/services/backup.md.
+        quiet: true
+      no_log: true
+
+    - name: Créer les répertoires du rôle backup
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      loop:
+        - "{{ backup_dir }}"
+        - "{{ backup_dir }}/staging"
+
+    - name: Déposer la clé privée de l'émetteur
+      ansible.builtin.copy:
+        content: "{{ backup_workload_issuer_key }}"
+        dest: "{{ backup_workload_key_file }}"
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+
+    - name: Générer le fichier d'environnement restic
+      ansible.builtin.template:
+        src: backup.env.j2
+        dest: "{{ backup_dir }}/backup.env"
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+
+    - name: Générer le fichier des secrets du dump base
+      ansible.builtin.template:
+        src: backup.secrets.j2
+        dest: "{{ backup_dir }}/backup.secrets"
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+      when: backup_database_enabled | bool
+
+    - name: Récupérer l'image restic
+      community.docker.docker_image:
+        name: "{{ backup_restic_image }}"
+        source: pull
+        force_source: false
+
+    - name: Déposer le script de sauvegarde
+      ansible.builtin.template:
+        src: enervision-backup.sh.j2
+        dest: "{{ backup_script_dir }}/enervision-backup"
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Installer les unités systemd de sauvegarde
+      ansible.builtin.template:
+        src: "{{ item }}.j2"
+        dest: "/etc/systemd/system/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - backup-dump.service
+        - backup-dump.timer
+        - backup.service
+        - backup.timer
+        - backup-check.service
+        - backup-check.timer
+      notify: Reload systemd
+
+    - name: Activer et planifier le dump local puis l'envoi vers Azure
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        enabled: true
+        state: started
+        daemon_reload: true
+      loop:
+        - backup-dump.timer
+        - backup.timer
+
+    - name: Activer et planifier le contrôle du dépôt
+      ansible.builtin.systemd_service:
+        name: backup-check.timer
+        enabled: "{{ backup_check_enabled | bool }}"
+        state: "{{ 'started' if backup_check_enabled | bool else 'stopped' }}"
+        daemon_reload: true
+
+- name: Sauvegarde désactivée — retrait
+  when: not (backup_enabled | bool)
+  block:
+    - name: Arrêter et désactiver les timers de sauvegarde
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        enabled: false
+        state: stopped
+      loop:
+        - backup-dump.timer
+        - backup.timer
+        - backup-check.timer
+      failed_when: false
+
+    - name: Retirer les unités systemd et les fichiers déposés
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/systemd/system/backup-dump.service
+        - /etc/systemd/system/backup-dump.timer
+        - /etc/systemd/system/backup.service
+        - /etc/systemd/system/backup.timer
+        - /etc/systemd/system/backup-check.service
+        - /etc/systemd/system/backup-check.timer
+        - "{{ backup_script_dir }}/enervision-backup"
+        - "{{ backup_dir }}/backup.env"
+        - "{{ backup_dir }}/backup.secrets"
+        - "{{ backup_workload_key_file }}"
+      notify: Reload systemd

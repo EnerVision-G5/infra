@@ -132,7 +132,7 @@ refuse de déployer la route sans ces identifiants.
 Tunnel :
 
 ```bash
-ssh -p 22 -L 5000:127.0.0.1:5000 root@10.105.200.46   # puis http://localhost:5000
+ssh -p 22 -L 5000:127.0.0.1:5000 root@10.105.200.34   # puis http://localhost:5000
 ```
 
 ---

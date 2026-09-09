@@ -8,7 +8,7 @@ La machine qui porte tout, et les contraintes qui en découlent.
 |---|---|
 | Type | VM sous Proxmox (noyau `*-pve`) |
 | Accès | SSH `root` sur le port **22**, **authentification par mot de passe** (valeur dans le Vault, cf. [Secrets](../secrets/index.md)) |
-| Adresse | `10.105.200.46` (inventaire : [Référence › Inventaire](../reference/inventaire.md)) |
+| Adresse | `10.105.200.34` (inventaire : [Référence › Inventaire](../reference/inventaire.md)) |
 | GPU | carte NVIDIA — `nvidia-container-runtime` est le **runtime Docker par défaut** |
 | Docker | driver de stockage **overlay2** (voir plus bas) |
 

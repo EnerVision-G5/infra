@@ -5,4 +5,5 @@ nav:
   - garage.md
   - timescaledb.md
   - monitoring.md
+  - backup.md
   - applications

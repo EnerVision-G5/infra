@@ -24,6 +24,7 @@ Sortie non nulle = un secret potentiellement en clair. Ce qu'il teste :
 garage_rpc_secret · garage_admin_token · garage_metrics_token
 timescaledb_password · ghcr_username · ghcr_token
 monitoring_grafana_admin_password · applications_api_jwt_secret · ansible_password
+backup_restic_password · backup_workload_issuer_key
 ```
 
 !!! note "Non couverts par le contrôle 2"

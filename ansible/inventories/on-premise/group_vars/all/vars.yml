@@ -31,6 +31,19 @@ timescaledb_user: "enervision"
 monitoring_grafana_host: "grafana.enervision.com"
 monitoring_grafana_admin_user: "admin"
 
+# BACKUP (restic → Azure Blob, chiffré côté client)
+# Le dépôt partage le conteneur `prod-data` sous le préfixe `restic/` (quota
+# de conteneurs limité pendant l'examen). La clé partagée du compte étant
+# désactivée, restic s'authentifie via l'identité fédérée `api-rw` (la même
+# que celle prévue pour l'écriture blob de l'API PROD) — aucun secret Azure.
+backup_azure_account_name: "stenervisiontfca5c57"
+backup_azure_container: "prod-data"
+backup_azure_client_id: "5736ac0c-9e7a-4d32-8779-74eee2660b16"
+backup_azure_tenant_id: "7f4f3591-5f6c-4f7b-a1bd-0a2dd8831218"
+backup_workload_issuer: "https://stenervisiontfca5c57.z28.web.core.windows.net/prod"
+backup_workload_subject: "prod/api-rw"
+backup_workload_kid: "prod-20260908"
+
 # APPLICATIONS (Front / API / Serving)
 applications_front_host: "app.enervision.com"
 applications_api_host: "api.enervision.com"
@@ -119,15 +132,15 @@ applications_enabled:
 # (sha-<git-sha>), lu dans le résumé du run CD ou la page Packages du dépôt
 # de service, et modifié uniquement par PR : c'est elle qui trace la mise en
 # production. Procédure complète dans le README, « Mettre en production ».
-applications_front_sha: "sha-eb29a117dae590a8d0bbc9030f19ed2c2dae3246"
-applications_api_sha: "sha-665d1e5a553e7cecbf4e19e5f9d01228fdf061a3"
+applications_front_sha: "sha-6ab170d12848bd3959ddbcc619b0dcebe0376c41"
+applications_api_sha: "sha-2e27cf3cccf61a6c550122d81d9def4e3b166c44"
 # serving, training et etl sont publiés depuis le dépôt predict : un même
 # commit leur donne le même tag, sur trois images distinctes. C'est le couple
 # image:tag qui identifie une version, et le rôle contrôle son unicité là.
-applications_serving_sha: "sha-48709c643fd223e9e23326754c9609409e685189"
-applications_training_sha: "sha-da9407f5ad00560406ea4fc46d7a3d398610c452"
-applications_etl_sha: "sha-da9407f5ad00560406ea4fc46d7a3d398610c452"
-applications_collector_sha: "sha-48709c643fd223e9e23326754c9609409e685189"
+applications_serving_sha: "sha-2bb82b9242d6f6fde24253e62bb93700a56466fb"
+applications_training_sha: "sha-2bb82b9242d6f6fde24253e62bb93700a56466fb"
+applications_etl_sha: "sha-2bb82b9242d6f6fde24253e62bb93700a56466fb"
+applications_collector_sha: "sha-2bb82b9242d6f6fde24253e62bb93700a56466fb"
 
 # DOCKER
 docker_external_networks:
@@ -151,6 +164,13 @@ ghcr_username: "{{ vault_ghcr_username }}"
 ghcr_token: "{{ vault_ghcr_token }}"
 
 monitoring_grafana_admin_password: "{{ vault_monitoring_grafana_admin_password }}"
+
+# Sauvegarde : clé de chiffrement du dépôt restic (>= 32 caractères, générée
+# puis conservée HORS de la VM — la perdre, c'est perdre toutes les
+# sauvegardes) et clé privée de l'émetteur, partagée avec le futur
+# rattachement blob de l'API.
+backup_restic_password: "{{ vault_backup_restic_password }}"
+backup_workload_issuer_key: "{{ vault_workload_issuer_key }}"
 
 # Clé S3 lue par serving et training pour atteindre Garage. Produite par
 # `garage key create`, jamais choisie à la main. Le `default('')` laisse le

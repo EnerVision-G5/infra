@@ -18,6 +18,7 @@ Tout est épinglé. Deux niveaux : les images **socle** (dans les
 | `grafana/promtail` | `3.3.2` | `monitoring` · `monitoring_promtail_image` |
 | `prom/node-exporter` | `v1.8.2` | `monitoring` · `monitoring_node_exporter_image` |
 | `gcr.io/cadvisor/cadvisor` | `v0.52.1` | `monitoring` · `monitoring_cadvisor_image` |
+| `restic/restic` | `0.19.1` | `backup` · `backup_restic_image` |
 
 !!! note "cAdvisor"
     `v0.52.1` est un minimum : les versions antérieures parlent une API

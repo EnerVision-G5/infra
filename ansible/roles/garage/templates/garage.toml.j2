@@ -1,6 +1,11 @@
 metadata_dir = "/var/lib/garage/meta"
 data_dir = "/var/lib/garage/data"
 
+# Snapshots de la base de métadonnées (sqlite) dans un volume dédié, à part
+# de metadata_dir : c'est ce volume que le rôle Ansible `backup` sauvegarde,
+# via `garage meta snapshot` (copie cohérente, la base vivante étant en WAL).
+metadata_snapshots_dir = "/var/lib/garage/snapshots"
+
 db_engine = "sqlite"
 
 replication_factor = 1

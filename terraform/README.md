@@ -143,6 +143,12 @@ team = {
 }
 ```
 
+Les rôles sur le groupe et l'accès à `tfstate` sont **par groupe de
+ressources**, pas par environnement : un seul environnement du groupe les
+pose, celui du bootstrap (`project_roles = true` dans `DEV`). La liste
+`team` de `PROD` ne décide que de l'accès aux blobs de `prod-data` ; une
+personne qui n'y est pas dans `DEV` ne verra pas le groupe.
+
 Ajouter, changer de niveau ou retirer quelqu'un est une PR, dont le plan
 montre les attributions de rôle, puis un lancement manuel. La personne qui
 tient le groupe n'est pas dans la liste : ses droits viennent de l'école

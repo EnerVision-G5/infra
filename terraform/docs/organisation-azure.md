@@ -62,8 +62,8 @@ hors du groupe, comme vous.
 | --- | --- | --- | --- |
 | Vous | `Devops-cours-projet-eadl`, `Reader` | votre groupe | l'école |
 | Vous | `Storage Blob Data Contributor` | votre groupe (tous les conteneurs) | `bootstrap.sh` |
-| Coéquipier `member` | `Reader` sur le groupe ; `Storage Blob Data Reader` sur les conteneurs de son environnement | votre groupe | Terraform (`iam.tf`, liste `team`) |
-| Coéquipier `devops` | `Reader`, `Devops-cours-projet-eadl` sur le groupe ; `Storage Blob Data Contributor` sur les conteneurs de son environnement et `tfstate` | votre groupe | Terraform (`iam.tf`, liste `team`) |
+| Coéquipier `member` | `Reader` sur le groupe (posé par `DEV`) ; `Storage Blob Data Reader` sur les conteneurs de chaque environnement où il figure | votre groupe | Terraform (`iam.tf`, liste `team`) |
+| Coéquipier `devops` | `Reader`, `Devops-cours-projet-eadl` sur le groupe et `tfstate` (posés par `DEV`) ; `Storage Blob Data Contributor` sur les conteneurs de chaque environnement où il figure | votre groupe | Terraform (`iam.tf`, liste `team`) |
 | Identité CI `id-enervision-github` | les mêmes trois | votre groupe | `bootstrap.sh` |
 | Identités applicatives (plus tard) | `Storage Blob Data Contributor` | les conteneurs de l'environnement | Terraform (`iam.tf`) |
 

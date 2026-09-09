@@ -9,6 +9,7 @@ volumes, configuration, endpoints, points d'attention, dépannage.
 | Garage | `provision.yml` | [garage](garage.md) |
 | TimescaleDB | `provision.yml` | [timescaledb](timescaledb.md) |
 | Monitoring | `provision.yml` | [monitoring](monitoring.md) |
+| Backup | `provision.yml` | [backup](backup.md) — restic → Azure Blob, chiffré |
 | Applications | `deploy.yml` | [applications](applications/index.md) — front, api, et la chaîne predict |
 
 ## Conventions communes
