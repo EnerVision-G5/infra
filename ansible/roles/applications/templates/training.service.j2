@@ -27,13 +27,19 @@ ExecStart=/usr/bin/flock --wait {{ applications_jobs_lock_wait_seconds }} \
   --project-name enervision-training \
   --profile jobs \
   run --rm -T training \
-  --history-days {{ applications_training_history_days }}{% if applications_training_promote | bool %} \
+  --history-days {{ applications_training_history_days }}{% if applications_training_challenge | bool %} \
+  --challenge{% endif %}{% if applications_training_promote | bool %} \
   --promote{% endif %}
 
 # Un entraînement sur {{ applications_training_history_days }} journées dure
 # des dizaines de minutes. Sans cette borne, systemd tuerait le service au
 # bout de 90 s en laissant un run MLflow ouvert derrière lui.
 TimeoutStartSec={{ applications_training_timeout_seconds }}
+
+# 3 = promotion refusée par la règle : verdict normal d'une semaine sans
+# progrès, pas une panne. Sans cette ligne, Restart=on-failure relancerait
+# l'entraînement pour obtenir le même verdict. Les vrais échecs sortent en 1.
+SuccessExitStatus=3
 
 # Reprise sur échec, dans la limite posée par StartLimit* ci-dessus.
 Restart=on-failure
