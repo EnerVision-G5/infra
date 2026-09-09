@@ -8,7 +8,7 @@ all:
     application_servers:
       hosts:
         onpremise-server:
-          ansible_host: "10.105.200.46"
+          ansible_host: "10.105.200.34"
           ansible_user: root
           ansible_port: 22
           ansible_password: "{{ vault_ansible_ssh_password }}"
@@ -16,7 +16,7 @@ all:
 
 | Champ | Valeur | Note |
 |---|---|---|
-| `ansible_host` | `10.105.200.46` | IP de la VM |
+| `ansible_host` | `10.105.200.34` | IP de la VM |
 | `ansible_user` | `root` | connexion directe en root |
 | `ansible_port` | `22` | SSH standard |
 | `ansible_password` | `{{ vault_ansible_ssh_password }}` | **jamais en clair** — valeur dans le Vault |
