@@ -53,6 +53,8 @@ secret_vars=(
   monitoring_grafana_admin_password
   applications_api_jwt_secret
   ansible_password
+  backup_restic_password
+  backup_workload_issuer_key
 )
 
 for var in "${secret_vars[@]}"; do

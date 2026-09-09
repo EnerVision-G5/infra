@@ -15,6 +15,7 @@ ansible-playbook ansible/playbooks/provision.yml --ask-vault-pass
 | rôle `garage` | `garage` | `/opt/srv/garage/` : `compose.yml`, `.env`, `garage.toml` → `up` → **bootstrap du layout** (idempotent) |
 | rôle `timescaledb` | `timescaledb`, `database` | `/opt/srv/timescaledb/` : `compose.yml`, `.env` → `up`. Base **vide**. |
 | rôle `monitoring` | `monitoring` | `/opt/srv/monitoring/` : compose + configs Prometheus/Loki/Promtail + provisioning Grafana (datasources, dashboards) → `up` |
+| rôle `backup` | `backup` | `/opt/srv/backup/` : script + timers systemd (`backup-dump` 02:00, `backup` 04:00, `backup-check` hebdo). Sauvegarde restic chiffrée (base, Garage, logs Loki) → Azure Blob. Voir [Services › Backup](../services/backup.md) |
 
 ## Ce qui n'y est plus
 
@@ -49,3 +50,8 @@ Les quatre conteneurs (`traefik`, `garage`, `timescaledb`, la stack
 `monitoring`) doivent être `Up`, le nœud Garage doit apparaître dans
 `garage status` avec une zone et une capacité, et `grafana.enervision.com`
 doit répondre.
+
+`systemctl list-timers 'backup*'` doit lister `backup-dump.timer`,
+`backup.timer` et `backup-check.timer` armés. Le rôle `backup` refuse de se
+déployer si les coordonnées de l'identité `api-rw` sont absentes — voir
+[Services › Backup](../services/backup.md).

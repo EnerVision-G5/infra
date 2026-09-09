@@ -1,0 +1,164 @@
+#!/bin/sh
+# Déployé par le rôle Ansible "backup" — ne pas éditer sur l'hôte.
+#
+# Sauvegarde restic chiffrée vers Azure Blob, en deux temps :
+#   enervision-backup dump      dump base + snapshot Garage — artefacts locaux,
+#                               aucun accès réseau (backup-dump.service, 02:00)
+#   enervision-backup upload     push restic vers Azure + rétention
+#                               (backup.service, 04:00)
+#   enervision-backup check      contrôle structurel du dépôt (léger, hebdo)
+#   enervision-backup backup     dump puis upload d'affilée (usage manuel)
+#
+# Lancé par systemd sous un flock partagé avec les autres traitements lourds.
+set -eu
+
+mode="${1:-backup}"
+
+run_dir="/run/enervision-backup"
+token_file="${run_dir}/federated-token.jwt"
+staging="{{ backup_dir }}/staging"
+host='{{ backup_restic_host }}'
+
+install -d -m 0700 "$staging"
+
+# --------------------------------------------------------------------------
+# Jeton d'identité fédérée (phases qui parlent à Azure : upload, check)
+#
+# Même mécanisme que l'API (terraform/docs/identites-applicatives.md) : un
+# JWT RS256 signé par la clé privée de l'émetteur. restic
+# (WorkloadIdentityCredential) l'échange contre un accès Azure valable ~1 h.
+# Régénéré toutes les 4 min pendant le run : restic peut redemander un jeton
+# au-delà de la validité de 10 min du JWT.
+# --------------------------------------------------------------------------
+b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+
+mint_token() {
+    _now="$(date +%s)"
+    _hdr="$(printf '{"alg":"RS256","typ":"JWT","kid":"%s"}' '{{ backup_workload_kid }}' | b64url)"
+    _pl="$(printf '{"iss":"%s","sub":"%s","aud":"api://AzureADTokenExchange","iat":%s,"nbf":%s,"exp":%s,"jti":"%s"}' \
+        '{{ backup_workload_issuer }}' '{{ backup_workload_subject }}' \
+        "$_now" "$_now" "$((_now + 600))" "$(cat /proc/sys/kernel/random/uuid)" | b64url)"
+    _sig="$(printf '%s.%s' "$_hdr" "$_pl" \
+        | openssl dgst -sha256 -sign '{{ backup_workload_key_file }}' -binary | b64url)"
+    printf '%s.%s.%s' "$_hdr" "$_pl" "$_sig" > "${token_file}.tmp"
+    chmod 0600 "${token_file}.tmp"
+    mv "${token_file}.tmp" "$token_file"
+}
+
+refresher=""
+start_token() {
+    install -d -m 0700 "$run_dir"
+    mint_token
+    ( while sleep 240; do mint_token || true; done ) &
+    refresher=$!
+    trap 'test -n "$refresher" && kill "$refresher" 2>/dev/null; rm -f "$token_file"' EXIT INT TERM
+}
+
+# --------------------------------------------------------------------------
+# restic, dans un conteneur éphémère. Volumes de données en lecture seule,
+# image jamais tirée à l'exécution (le rôle l'a déjà récupérée).
+# --------------------------------------------------------------------------
+restic() {
+    docker run --rm -i \
+        --pull never \
+        --cpus '{{ backup_cpu_limit }}' \
+        --memory '{{ backup_memory_limit }}' \
+        --env-file '{{ backup_dir }}/backup.env' \
+        -v '{{ backup_workload_key_file }}:{{ backup_workload_key_file }}:ro' \
+        -v "${run_dir}:${run_dir}:ro" \
+        -v "${staging}:/backup/db:ro" \
+        -v '{{ backup_garage_snapshots_volume }}:/backup/garage/snapshots:ro' \
+        -v '{{ backup_garage_data_volume }}:/backup/garage/data:ro' \
+        -v '{{ backup_loki_volume }}:/backup/monitoring/loki:ro' \
+        -v 'enervision-backup-cache:/root/.cache/restic' \
+        '{{ backup_restic_image }}' "$@"
+}
+
+# --------------------------------------------------------------------------
+do_dump() {
+    # Restes d'un dump interrompu.
+    rm -f "${staging:?}"/*.part
+{% if backup_database_enabled %}
+    echo "== Base {{ backup_db_name }} (dump logique) =="
+    # Mot de passe lu depuis backup.secrets (0600) par docker, jamais dans ce
+    # script ni dans son environnement. Écriture atomique (.part puis mv).
+    docker exec --env-file '{{ backup_dir }}/backup.secrets' '{{ backup_db_container }}' \
+        pg_dump -U '{{ backup_db_user }}' -d '{{ backup_db_name }}' \
+        --format=custom --compress=0 --no-owner --no-privileges \
+        > "${staging}/{{ backup_db_name }}.dump.part"
+    mv "${staging}/{{ backup_db_name }}.dump.part" "${staging}/{{ backup_db_name }}.dump"
+    docker exec --env-file '{{ backup_dir }}/backup.secrets' '{{ backup_db_container }}' \
+        pg_dumpall -U '{{ backup_db_user }}' --globals-only --no-role-passwords \
+        > "${staging}/globals.sql.part"
+    mv "${staging}/globals.sql.part" "${staging}/globals.sql"
+{% endif %}
+{% if backup_garage_enabled %}
+    echo "== Garage (snapshot des métadonnées) =="
+    # Copie cohérente de la base sqlite dans le volume garage_snapshots.
+    docker exec '{{ backup_garage_container }}' {{ backup_garage_bin }} meta snapshot
+{% endif %}
+}
+
+do_upload() {
+    start_token
+
+    # Dépôt neuf : première initialisation (idempotent ensuite).
+    if ! restic cat config >/dev/null 2>&1; then
+        echo "== Initialisation du dépôt restic =="
+        restic init
+    fi
+
+{% if backup_database_enabled %}
+    if [ ! -f "${staging}/{{ backup_db_name }}.dump" ]; then
+        echo "dump base absent — lancer 'enervision-backup dump' d'abord" >&2
+        exit 1
+    fi
+    echo "== Envoi base =="
+    restic backup --tag db --host "$host" /backup/db
+{% endif %}
+{% if backup_garage_enabled %}
+    echo "== Envoi Garage (snapshot métadonnées + blocs) =="
+    restic backup --tag garage --host "$host" \
+        /backup/garage/snapshots /backup/garage/data
+{% endif %}
+{% if backup_monitoring_logs_enabled %}
+    echo "== Envoi monitoring (chunks Loki) =="
+    restic backup --tag monitoring --host "$host" /backup/monitoring/loki
+{% endif %}
+
+    echo "== Rétention =="
+    restic forget --group-by host,tags \
+        --keep-daily {{ backup_keep_daily }} \
+        --keep-weekly {{ backup_keep_weekly }} \
+        --keep-monthly {{ backup_keep_monthly }} \
+        --keep-yearly {{ backup_keep_yearly }}{% if backup_prune %} \
+        --prune{% endif %}
+
+
+    # Artefacts locaux consommés : on ne garde pas un dump en clair sur la VM.
+    rm -f "${staging:?}"/*
+
+    echo "== Terminé =="
+    restic snapshots --compact --group-by host,tags || true
+}
+
+do_check() {
+    start_token
+    if ! restic cat config >/dev/null 2>&1; then
+        echo "== Initialisation du dépôt restic =="
+        restic init
+    fi
+    echo "== Contrôle structurel du dépôt =="
+    restic check
+}
+
+case "$mode" in
+    dump)   do_dump ;;
+    upload) do_upload ;;
+    backup) do_dump; do_upload ;;
+    check)  do_check ;;
+    *)
+        echo "mode inconnu : $mode (dump | upload | check | backup)" >&2
+        exit 2
+        ;;
+esac

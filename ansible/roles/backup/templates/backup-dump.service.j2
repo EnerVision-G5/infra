@@ -1,0 +1,24 @@
+# Déployé par le rôle Ansible "backup" — ne pas éditer sur l'hôte.
+[Unit]
+Description=EnerVision — dump local des sauvegardes (base + snapshot Garage)
+Documentation=https://github.com/EnerVision-G5/infra
+After=docker.service
+Requires=docker.service
+
+StartLimitIntervalSec={{ backup_restart_window_seconds }}
+StartLimitBurst={{ backup_restart_attempts }}
+
+[Service]
+Type=oneshot
+
+# Aucun accès réseau ici : `pg_dump` dans le conteneur + `garage meta
+# snapshot`. Même verrou partagé — un dump pendant un entraînement mettrait
+# deux charges lourdes sur la même VM.
+ExecStart=/usr/bin/flock --wait {{ backup_lock_wait_seconds }} \
+  {{ backup_lock }} \
+  {{ backup_script_dir }}/enervision-backup dump
+
+TimeoutStartSec={{ backup_dump_timeout_seconds }}
+
+Restart=on-failure
+RestartSec={{ backup_restart_delay_seconds }}

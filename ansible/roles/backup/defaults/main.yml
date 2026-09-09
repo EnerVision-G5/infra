@@ -1,0 +1,132 @@
+---
+# Répertoire de déploiement sur l'hôte (même convention que les autres rôles).
+backup_dir: /opt/srv/backup
+backup_script_dir: /usr/local/sbin
+
+# Interrupteur général. false : le rôle arrête les timers, retire les unités
+# systemd, le script, le fichier d'environnement et la clé déposée. Les
+# snapshots déjà poussés sur Azure ne sont PAS touchés.
+backup_enabled: true
+
+# Image restic épinglée — même binaire en local et sur la VM.
+backup_restic_image: "restic/restic:0.19.1"
+
+# --------------------------------------------------------------------------
+# Dépôt restic
+#
+# Partage le conteneur `prod-data` (quota de conteneurs limité pendant
+# l'examen) sous le préfixe `restic/` : le dépôt est isolé des blobs de
+# l'API, qui écrit à la racine du conteneur. restic chiffre TOUT côté client
+# avant l'envoi : contenu, noms de fichiers, arborescence, métadonnées. La
+# clé du dépôt est `vault_backup_restic_password` — la perdre, c'est perdre
+# l'accès à toutes les sauvegardes.
+# --------------------------------------------------------------------------
+backup_azure_prefix: "restic"
+backup_repository: "azure:{{ backup_azure_container }}:/{{ backup_azure_prefix }}"
+backup_restic_compression: "auto"
+
+# backup_restic_password : OBLIGATOIRE — `vault_backup_restic_password`,
+#   >= 32 caractères, généré (jamais choisi) puis conservé hors de la VM :
+#   python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+
+# --------------------------------------------------------------------------
+# Identité Azure — fédération, aucun secret côté Azure
+#
+# La clé partagée du compte de stockage est désactivée : restic ne peut pas
+# s'authentifier par clé de compte ni par SAS. Il s'authentifie comme l'API
+# on-premise (terraform/docs/identites-applicatives.md) : un JWT RS256 signé
+# par notre émetteur, forgé par le script à chaque run, qu'Azure échange
+# contre l'identité managée `api-rw` (Storage Blob Data Contributor sur les
+# conteneurs de l'environnement). restic fait l'échange via
+# WorkloadIdentityCredential (AZURE_CLIENT_ID + AZURE_TENANT_ID +
+# AZURE_FEDERATED_TOKEN_FILE).
+#
+# backup_azure_account_name / backup_azure_container / backup_azure_client_id
+# / backup_azure_tenant_id / backup_workload_issuer / backup_workload_subject
+# / backup_workload_kid : renseignés dans group_vars (vars.yml). Ils supposent
+# que l'identité `api-rw` PROD existe côté Azure (`terraform apply` PROD).
+backup_workload_key_file: "{{ backup_dir }}/issuer.pem"
+backup_azure_authority_host: "https://login.microsoftonline.com/"
+
+# backup_workload_issuer_key : OBLIGATOIRE — `vault_workload_issuer_key`,
+#   contenu PEM de la clé privée de l'émetteur (issuer-keygen.sh).
+
+# --------------------------------------------------------------------------
+# Cibles
+# --------------------------------------------------------------------------
+backup_database_enabled: true
+backup_garage_enabled: true
+backup_monitoring_logs_enabled: true
+
+# Base : dump logique via le conteneur (pg_dump format custom, NON compressé
+# — restic déduplique puis compresse mieux). Réutilise les coordonnées du
+# rôle timescaledb ; le mot de passe vient du même secret Vault.
+backup_db_container: timescaledb
+backup_db_name: "{{ timescaledb_db }}"
+backup_db_user: "{{ timescaledb_user }}"
+
+# Garage : `garage meta snapshot` écrit une copie cohérente de la base de
+# métadonnées (sqlite en WAL, dangereuse à copier à chaud) dans un volume
+# dédié ; les blocs de données, eux, sont immuables et sûrs à copier vivants.
+backup_garage_container: garage
+backup_garage_bin: /garage
+
+# Volumes Docker nommés, lus en lecture seule. Nom = <projet>_<volume>, le
+# projet étant le nom du dossier /opt/srv/<stack> (défaut de docker compose).
+backup_garage_data_volume: garage_garage_data
+backup_garage_snapshots_volume: garage_garage_snapshots
+backup_loki_volume: monitoring_loki_data
+
+# Étiquette d'hôte portée par les snapshots restic.
+backup_restic_host: "{{ inventory_hostname }}"
+
+# --------------------------------------------------------------------------
+# Rétention — politique `restic forget`, appliquée par cible (--group-by
+# host,tags). « 7 jours / 1 semaine / 3 mois / 1 an » :
+# --------------------------------------------------------------------------
+backup_keep_daily: 7
+backup_keep_weekly: 1
+backup_keep_monthly: 3
+backup_keep_yearly: 1
+# `forget` purge aussi les données déréférencées dans le même passage.
+backup_prune: true
+
+# --------------------------------------------------------------------------
+# Planification — deux temps
+#
+#   02:00  backup-dump.timer   dump base + snapshot Garage, artefacts locaux,
+#                              aucun accès réseau. Court, mais charge la base.
+#   04:00  backup.timer        push restic vers Azure + rétention. Long, tire
+#                              sur le lien montant ; décalé du dump et des
+#                              autres traitements de nuit.
+#
+# Le `dump` doit finir avant que le `push` ne parte : deux heures d'écart,
+# et le verrou partagé sérialise de toute façon.
+# --------------------------------------------------------------------------
+backup_dump_on_calendar: "*-*-* 02:00:00"
+backup_on_calendar: "*-*-* 04:00:00"
+backup_randomized_delay_seconds: 900
+
+# Contrôle du dépôt : structure (index + arborescence) une fois par semaine,
+# sans relire les données (léger). `restic check` sans `--read-data`.
+backup_check_enabled: true
+backup_check_on_calendar: "Sun *-*-* 05:00:00"
+
+# --------------------------------------------------------------------------
+# Garde-fous d'exécution — mêmes principes que les traitements predict.
+# --------------------------------------------------------------------------
+# Verrou partagé avec l'entraînement, la surveillance de dérive et les
+# rattrapages : une seule tâche lourde à la fois sur la VM 4 vCPU / 8 Go.
+backup_lock: "/run/enervision-jobs.lock"
+backup_lock_wait_seconds: 3600
+
+backup_dump_timeout_seconds: 3600
+backup_timeout_seconds: 10800
+backup_check_timeout_seconds: 3600
+backup_restart_delay_seconds: 900
+backup_restart_attempts: 2
+backup_restart_window_seconds: 86400
+
+# Plafonds ressources du conteneur restic.
+backup_memory_limit: 1G
+backup_cpu_limit: "1.0"

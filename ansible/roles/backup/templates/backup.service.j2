@@ -1,0 +1,29 @@
+# Déployé par le rôle Ansible "backup" — ne pas éditer sur l'hôte.
+[Unit]
+Description=EnerVision — envoi restic chiffré des sauvegardes vers Azure Blob
+Documentation=https://github.com/EnerVision-G5/infra
+After=docker.service
+Requires=docker.service
+
+# Plan de secours : une seule reprise, espacée. Un envoi qui échoue (Azure
+# injoignable, dépôt verrouillé) échouera pareil s'il repart tout de suite.
+# Au-delà, l'unité reste en échec — un incident à lire, que node-exporter
+# remonte à Prometheus et que promtail remonte à Loki.
+StartLimitIntervalSec={{ backup_restart_window_seconds }}
+StartLimitBurst={{ backup_restart_attempts }}
+
+[Service]
+Type=oneshot
+
+# Verrou partagé avec le dump, l'entraînement, la surveillance de dérive et
+# les rattrapages : une seule tâche lourde à la fois sur la VM 4 vCPU / 8 Go.
+ExecStart=/usr/bin/flock --wait {{ backup_lock_wait_seconds }} \
+  {{ backup_lock }} \
+  {{ backup_script_dir }}/enervision-backup upload
+
+# Les blocs Garage et les chunks Loki poussés sur Azure : sans cette borne,
+# systemd tuerait le service au bout de 90 s.
+TimeoutStartSec={{ backup_timeout_seconds }}
+
+Restart=on-failure
+RestartSec={{ backup_restart_delay_seconds }}

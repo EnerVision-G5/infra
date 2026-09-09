@@ -19,6 +19,8 @@ team = {
 }
 
 # Compte du projet (bootstrap) ; conteneurs préfixés : prod-data
+# Le rôle Ansible `backup` (restic) partage prod-data sous le préfixe
+# `restic/` — quota de conteneurs limité pendant l'examen.
 storage_account_name = "stenervisiontfca5c57"
 storage_containers   = ["data"]
 

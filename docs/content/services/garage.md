@@ -28,6 +28,7 @@ partitions de variables de la chaîne predict. Expose aussi un endpoint web
 db_engine = "sqlite"
 replication_factor = 1
 rpc_public_addr = "garage:3901"
+metadata_snapshots_dir = "/var/lib/garage/snapshots"   # volume garage_snapshots
 
 [s3_api]   s3_region = "garage"   root_domain = ".s3.enervision.com"
 [s3_web]   root_domain = ".web.enervision.com"   index = "index.html"
@@ -71,6 +72,14 @@ conteneur, `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` produits par
 `<bucket>.web.enervision.com` sert le bucket `<bucket>` (avec un `index.html`).
 `web.enervision.com` **tout court** ne correspond à aucun bucket → `404`
 (c'est normal, ça veut dire que Garage tourne).
+
+## Sauvegarde
+
+Le rôle [`backup`](backup.md) déclenche `garage meta snapshot` (copie
+cohérente de la base sqlite de métadonnées dans le volume `garage_snapshots`)
+puis sauvegarde ce volume **et** `garage_data` (blocs immuables) vers Azure
+Blob via restic. Le volume `garage_metadata` vivant n'est jamais copié
+directement.
 
 ## Dépannage
 
