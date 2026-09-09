@@ -3,6 +3,13 @@
 backup_dir: /opt/srv/backup
 backup_script_dir: /usr/local/sbin
 
+# Métriques d'exécution : après chaque phase le script écrit un fichier
+# `.prom` (une réécriture atomique par phase) que le collecteur `textfile`
+# de node-exporter ramasse. C'est ce qui alimente le dashboard « Sauvegardes »
+# — dernier run, durée, âge du dernier snapshot, taille du dépôt. Même
+# dossier que celui lu par le rôle monitoring (node_exporter_textfile_dir).
+backup_textfile_dir: "{{ node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}"
+
 # Interrupteur général. false : le rôle arrête les timers, retire les unités
 # systemd, le script, le fichier d'environnement et la clé déposée. Les
 # snapshots déjà poussés sur Azure ne sont PAS touchés.

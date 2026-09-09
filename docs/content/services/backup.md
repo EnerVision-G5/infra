@@ -93,9 +93,31 @@ l'entraînement, la dérive et les rattrapages).
 
 ## Logs et supervision
 
+- **Dashboard** : Grafana → **Sauvegardes** (`enervision-sauvegardes`).
+  Dernier run par phase, âge et nombre de snapshots par cible, taille du
+  dépôt, durées, et les journaux en bas de page.
+- **Métriques** : après chaque phase le script réécrit un fichier `.prom`
+  dans `/var/lib/node_exporter/textfile` (`enervision-backup-<phase>.prom`),
+  ramassé par le collecteur `textfile` de node-exporter. En cas d'échec au
+  milieu d'une phase, le piège de sortie écrit quand même `success 0`.
+
+  | Métrique | Portée |
+  |---|---|
+  | `enervision_backup_success{phase}` | 1 / 0 du dernier `dump` \| `upload` \| `check` |
+  | `enervision_backup_duration_seconds{phase}` | durée de la dernière phase |
+  | `enervision_backup_completion_timestamp_seconds{phase}` | fin de la dernière phase (epoch) |
+  | `enervision_backup_snapshot_timestamp_seconds{tag}` | date du dernier snapshot par cible |
+  | `enervision_backup_snapshots_count{tag}` | snapshots conservés par cible |
+  | `enervision_backup_repository_size_bytes` | taille du dépôt (`restic stats --mode raw-data`) |
+  | `enervision_backup_staging_bytes{artifact}` | taille des dumps locaux du dernier `dump` |
+
 - **Échec** : le collecteur systemd de node-exporter suit
   `backup-dump.service`, `backup.service` et `backup-check.service` — une
   unité en échec apparaît dans Prometheus / Grafana comme les autres jobs.
+- **Alerte** : *Sauvegarde hors-site trop ancienne* se déclenche si le
+  dernier snapshot restic date de plus de 26 h, **ou** si la métrique
+  n'existe pas du tout (`noDataState: Alerting`) — donc tant que la première
+  sauvegarde n'a pas tourné.
 - **Journaux** : promtail scrape le journal systemd de ces unités et les
   pousse dans Loki. Dans Grafana → Explore → source **Loki** :
 

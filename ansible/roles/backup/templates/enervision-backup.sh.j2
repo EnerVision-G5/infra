@@ -10,6 +10,11 @@
 #   enervision-backup backup     dump puis upload d'affilée (usage manuel)
 #
 # Lancé par systemd sous un flock partagé avec les autres traitements lourds.
+#
+# Chaque phase écrit un fichier .prom dans {{ backup_textfile_dir }}
+# (collecteur textfile de node-exporter) : succès, durée, fin, et pour
+# `upload` l'âge du dernier snapshot par cible et la taille du dépôt. C'est
+# la source du dashboard Grafana « Sauvegardes ».
 set -eu
 
 mode="${1:-backup}"
@@ -19,7 +24,32 @@ token_file="${run_dir}/federated-token.jwt"
 staging="{{ backup_dir }}/staging"
 host='{{ backup_restic_host }}'
 
+# Métriques d'exécution ramassées par le collecteur textfile de node-exporter
+# (un fichier .prom par phase). Alimente le dashboard Grafana « Sauvegardes ».
+metrics_dir='{{ backup_textfile_dir }}'
+
 install -d -m 0700 "$staging"
+install -d -m 0755 "$metrics_dir"
+
+# Phase en cours — pour que le piège de sortie sache quoi marquer en échec.
+current_phase=""
+phase_start=0
+refresher=""
+
+# --------------------------------------------------------------------------
+# Piège de sortie unique : arrête le rafraîchisseur de jeton, purge le jeton,
+# et — si on meurt au milieu d'une phase — écrit sa métrique d'échec.
+# --------------------------------------------------------------------------
+cleanup() {
+    _rc=$?
+    [ -z "$refresher" ] || kill "$refresher" 2>/dev/null || true
+    rm -f "$token_file"
+    if [ -n "$current_phase" ]; then
+        emit_metrics "$current_phase" 0 "$(( $(date +%s) - phase_start ))" || true
+    fi
+    exit "$_rc"
+}
+trap cleanup EXIT INT TERM
 
 # --------------------------------------------------------------------------
 # Jeton d'identité fédérée (phases qui parlent à Azure : upload, check)
@@ -45,13 +75,11 @@ mint_token() {
     mv "${token_file}.tmp" "$token_file"
 }
 
-refresher=""
 start_token() {
     install -d -m 0700 "$run_dir"
     mint_token
     ( while sleep 240; do mint_token || true; done ) &
     refresher=$!
-    trap 'test -n "$refresher" && kill "$refresher" 2>/dev/null; rm -f "$token_file"' EXIT INT TERM
 }
 
 # --------------------------------------------------------------------------
@@ -72,6 +100,116 @@ restic() {
         -v '{{ backup_loki_volume }}:/backup/monitoring/loki:ro' \
         -v 'enervision-backup-cache:/root/.cache/restic' \
         '{{ backup_restic_image }}' "$@"
+}
+
+# --------------------------------------------------------------------------
+# Métriques — best-effort. Aucune erreur ici ne doit faire échouer la
+# sauvegarde ; tout est enveloppé de `|| true` chez l'appelant.
+# --------------------------------------------------------------------------
+emit_dump_detail() {
+    printf '# HELP enervision_backup_staging_bytes Taille des artefacts locaux du dernier dump.\n'
+    printf '# TYPE enervision_backup_staging_bytes gauge\n'
+    for _a in "${staging}"/*.dump "${staging}"/*.sql; do
+        [ -e "$_a" ] || continue
+        printf 'enervision_backup_staging_bytes{artifact="%s"} %s\n' \
+            "$(basename "$_a")" "$(stat -c %s "$_a" 2>/dev/null || echo 0)"
+    done
+}
+
+emit_upload_detail() {
+    command -v python3 >/dev/null 2>&1 || return 0
+    _snaps="$(restic snapshots --json 2>/dev/null || echo '[]')"
+    _stats="$(restic stats --mode raw-data --json 2>/dev/null || echo '{}')"
+    BK_SNAPS="$_snaps" BK_STATS="$_stats" python3 <<'PY' || true
+import os, json, re, datetime
+
+
+def load(name, default):
+    try:
+        return json.loads(os.environ.get(name) or default)
+    except Exception:
+        return json.loads(default)
+
+
+snaps = load("BK_SNAPS", "[]")
+stats = load("BK_STATS", "{}")
+
+latest, count = {}, {}
+for snap in snaps:
+    raw = re.sub(r"\.\d+", "", snap.get("time", ""))
+    try:
+        ts = datetime.datetime.strptime(raw, "%Y-%m-%dT%H:%M:%S%z").timestamp()
+    except Exception:
+        continue
+    for tag in (snap.get("tags") or ["sans-tag"]):
+        count[tag] = count.get(tag, 0) + 1
+        latest[tag] = max(latest.get(tag, 0.0), ts)
+
+lines = [
+    "# HELP enervision_backup_snapshot_timestamp_seconds Dernier snapshot restic par cible (epoch).",
+    "# TYPE enervision_backup_snapshot_timestamp_seconds gauge",
+]
+for tag, ts in sorted(latest.items()):
+    lines.append('enervision_backup_snapshot_timestamp_seconds{tag="%s"} %d' % (tag, ts))
+lines += [
+    "# HELP enervision_backup_snapshots_count Nombre de snapshots restic par cible.",
+    "# TYPE enervision_backup_snapshots_count gauge",
+]
+for tag, n in sorted(count.items()):
+    lines.append('enervision_backup_snapshots_count{tag="%s"} %d' % (tag, n))
+
+size = stats.get("total_size")
+if isinstance(size, (int, float)):
+    lines += [
+        "# HELP enervision_backup_repository_size_bytes Taille du dépôt restic (raw-data).",
+        "# TYPE enervision_backup_repository_size_bytes gauge",
+        "enervision_backup_repository_size_bytes %d" % size,
+    ]
+total = stats.get("snapshots_count")
+if isinstance(total, (int, float)):
+    lines += [
+        "# HELP enervision_backup_repository_snapshots_total Snapshots dans le dépôt.",
+        "# TYPE enervision_backup_repository_snapshots_total gauge",
+        "enervision_backup_repository_snapshots_total %d" % total,
+    ]
+print("\n".join(lines))
+PY
+}
+
+emit_metrics() {
+    _phase=$1
+    _ok=$2
+    _dur=$3
+    _file="${metrics_dir}/enervision-backup-${_phase}.prom"
+    {
+        printf '# HELP enervision_backup_success Résultat de la dernière phase (1 = succès).\n'
+        printf '# TYPE enervision_backup_success gauge\n'
+        printf 'enervision_backup_success{phase="%s"} %s\n' "$_phase" "$_ok"
+        printf '# HELP enervision_backup_duration_seconds Durée de la dernière phase.\n'
+        printf '# TYPE enervision_backup_duration_seconds gauge\n'
+        printf 'enervision_backup_duration_seconds{phase="%s"} %s\n' "$_phase" "$_dur"
+        printf '# HELP enervision_backup_completion_timestamp_seconds Fin de la dernière phase (epoch).\n'
+        printf '# TYPE enervision_backup_completion_timestamp_seconds gauge\n'
+        printf 'enervision_backup_completion_timestamp_seconds{phase="%s"} %s\n' "$_phase" "$(date +%s)"
+        if [ "$_ok" = 1 ]; then
+            case "$_phase" in
+                dump)   emit_dump_detail || true ;;
+                upload) emit_upload_detail || true ;;
+            esac
+        fi
+    } > "${_file}.tmp"
+    chmod 0644 "${_file}.tmp"
+    mv "${_file}.tmp" "$_file"
+}
+
+# Exécute une phase en la chronométrant ; le succès écrit sa métrique, l'échec
+# est capté par le piège de sortie via `current_phase`.
+run() {
+    current_phase=$1
+    phase_start=$(date +%s)
+    "do_$1"
+    emit_metrics "$1" 1 "$(( $(date +%s) - phase_start ))"
+    current_phase=""
 }
 
 # --------------------------------------------------------------------------
@@ -153,10 +291,10 @@ do_check() {
 }
 
 case "$mode" in
-    dump)   do_dump ;;
-    upload) do_upload ;;
-    backup) do_dump; do_upload ;;
-    check)  do_check ;;
+    dump)   run dump ;;
+    upload) run upload ;;
+    backup) run dump; run upload ;;
+    check)  run check ;;
     *)
         echo "mode inconnu : $mode (dump | upload | check | backup)" >&2
         exit 2

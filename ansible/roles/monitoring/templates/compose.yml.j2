@@ -160,6 +160,10 @@ services:
       # à surveiller sur cette machine.
       - --collector.systemd
       - --collector.systemd.unit-include=^(training|drift|collector-backfill|etl-backfill|backup|backup-dump|backup-check)\.service$$
+      # Collecteur textfile : les traitements datés déposent des `.prom` dans
+      # ce dossier (le rôle backup y écrit dernier run, durée, âge du dernier
+      # snapshot, taille du dépôt). node-exporter les relit à chaque scrape.
+      - --collector.textfile.directory=/textfile
 
     volumes:
       - /:/host:ro,rslave
@@ -168,6 +172,8 @@ services:
       # qu'en DEBUG — une supervision muette qui a l'air en place.
       # Pas de :ro : s'y connecter demande le droit d'écriture.
       - /run/systemd/private:/run/systemd/private
+      # Métriques `.prom` des traitements datés, en lecture seule.
+      - {{ monitoring_textfile_dir }}:/textfile:ro
 
     networks:
       - monitoring_network

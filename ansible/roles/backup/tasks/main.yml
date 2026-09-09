@@ -35,6 +35,17 @@
         - "{{ backup_dir }}"
         - "{{ backup_dir }}/staging"
 
+    # Dossier des métriques .prom lu par node-exporter (créé aussi par le rôle
+    # monitoring, qui joue avant). 0755 : node-exporter tourne en `nobody` et
+    # doit relire les fichiers.
+    - name: Créer le dossier des métriques textfile
+      ansible.builtin.file:
+        path: "{{ backup_textfile_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
     - name: Déposer la clé privée de l'émetteur
       ansible.builtin.copy:
         content: "{{ backup_workload_issuer_key }}"
@@ -139,4 +150,9 @@
         - "{{ backup_dir }}/backup.env"
         - "{{ backup_dir }}/backup.secrets"
         - "{{ backup_workload_key_file }}"
+        # Sinon des métriques figées gardent le dashboard « vert » et
+        # l'alerte « sauvegarde âgée » silencieuse alors qu'il n'y a plus rien.
+        - "{{ backup_textfile_dir }}/enervision-backup-dump.prom"
+        - "{{ backup_textfile_dir }}/enervision-backup-upload.prom"
+        - "{{ backup_textfile_dir }}/enervision-backup-check.prom"
       notify: Reload systemd
