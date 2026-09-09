@@ -13,6 +13,11 @@ applications_front_image_name: dashboard
 applications_api_image_name: api
 applications_collector_image_name: collector
 applications_raw_archiver_image_name: raw-archiver
+applications_ingester_image_name: ingester
+# Image du dépôt `database` : source de vérité du schéma. N'est pas une
+# application (pas dans le catalogue) — le rôle la lance en one-shot
+# `alembic upgrade head` avant de déployer les conteneurs.
+applications_database_image_name: database
 
 # --------------------------------------------------------------------------
 # Versions déployées — un SHA par image. Chaque valeur est le tag GHCR immuable
@@ -24,6 +29,9 @@ applications_front_sha: ""
 applications_api_sha: ""
 applications_collector_sha: ""
 applications_raw_archiver_sha: ""
+applications_ingester_sha: ""
+# Vide → le rôle ne joue pas la migration (schéma géré ailleurs / à la main).
+applications_database_sha: ""
 
 # Domaines publics (routage Traefik). Surchargeables dans group_vars.
 applications_front_host: "app.enervision.com"
@@ -61,6 +69,10 @@ applications_collector_cpu_limit: "0.5"
 
 applications_raw_archiver_memory_limit: 384M
 applications_raw_archiver_cpu_limit: "0.5"
+
+# Plafonds PAR conteneur ingester (raw-ingester, enriched-ingester, site-sync).
+applications_ingester_memory_limit: 384M
+applications_ingester_cpu_limit: "0.5"
 
 # Connexion applicative de l'API à la base, construite depuis les variables du
 # rôle postgres (mot de passe chiffré avec ansible-vault). L'hôte `postgres`
@@ -140,6 +152,36 @@ applications_collector_poll_interval: 60
 applications_collector_sites: "SITE001,SITE002,SITE003,SITE004,SITE005"
 
 # --------------------------------------------------------------------------
+# ingester (dépôt `ingester`) — trois services, une image :
+#   raw-ingester      energy.data.raw      → energy_readings (insert)
+#   enriched-ingester energy.data.enriched → energy_readings (update, Flink)
+#   site-sync         one-shot : complète `sites` depuis GET /api/v1/sites
+#
+# Les modèles SQLAlchemy viennent de l'image `database` (COPY --from), pas
+# déclarés ici. Le schéma doit être appliqué (dépôt `database`) avant que
+# l'ingester ne serve à quelque chose.
+# --------------------------------------------------------------------------
+applications_ingester_database_url: >-
+  postgresql+psycopg://{{ postgres_user }}:{{ postgres_password | urlencode }}@postgres:5432/{{ postgres_db }}
+# Lu par alembic/env.py du conteneur `database` — qui passe l'URL dans
+# ConfigParser (set_main_option). Le mot de passe BRUT : un `%XX` de urlencode
+# y serait pris pour de l'interpolation. SQLAlchemy tolère les `?`/`!` bruts
+# dans la position mot de passe (regex `[^@]*` jusqu'au `@`).
+applications_database_migrate_url: >-
+  postgresql+psycopg://{{ postgres_user }}:{{ postgres_password }}@postgres:5432/{{ postgres_db }}
+applications_ingester_kafka_bootstrap: "kafka:9092"
+applications_ingester_raw_topic: "energy.data.raw"
+applications_ingester_raw_group_id: "energy-readings-ingester"
+applications_ingester_enriched_topic: "energy.data.enriched"
+applications_ingester_enriched_group_id: "energy-readings-enriched-ingester"
+# API source du référentiel (site-sync). Par défaut la même que le collector.
+applications_ingester_mock_api_url: >-
+  {{ applications_collector_mock_api_url | default('http://mock-api:8000') }}
+# site-sync est un one-shot : le mettre à false pour un déploiement où le
+# référentiel est déjà à jour (il se rejoue de toute façon à chaque bump de sha).
+applications_ingester_site_sync_enabled: true
+
+# --------------------------------------------------------------------------
 # Identités applicatives Azure — accès aux blobs SANS clé de compte, par
 # fédération d'identité (cf. terraform/docs/identites-applicatives.md).
 # Le service signe un JWT court avec la clé privée de l'émetteur de
@@ -212,6 +254,11 @@ applications_services_catalog:
     # uid du conteneur (Dockerfile : useradd --uid 10001 archiver) — la clé
     # privée montée doit lui appartenir, sinon PermissionError à la lecture.
     workload_key_uid: 10001
+  # Une entrée, trois conteneurs (voir ingester.compose.yml.j2).
+  - name: ingester
+    kind: worker
+    image: "{{ applications_image_namespace }}/{{ applications_ingester_image_name }}:{{ applications_ingester_sha }}"
+    sha: "{{ applications_ingester_sha }}"
 
 # Applications effectivement déployées. Filtre le catalogue : une application
 # absente n'est ni configurée, ni tirée, ni démarrée. Surchargeable dans
@@ -221,6 +268,7 @@ applications_enabled:
   - api
   - collector
   - raw-archiver
+  - ingester
 
 # Liste consommée par les tasks : le catalogue restreint aux applications
 # activées, dans l'ordre du catalogue.

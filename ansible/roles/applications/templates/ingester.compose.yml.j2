@@ -1,0 +1,64 @@
+# Déployé par le rôle Ansible "applications" — ne pas éditer sur l'hôte.
+# ingester (dépôt `ingester`) — trois conteneurs, une image :
+#   raw-ingester      energy.data.raw      → energy_readings (insert)
+#   enriched-ingester energy.data.enriched → energy_readings (update, Flink)
+#   site-sync         one-shot : complète `sites` depuis GET /api/v1/sites
+#
+# Le schéma est appliqué par le dépôt `database` — l'ingester ne le déclare pas.
+
+x-common: &common
+  image: {{ applications_image_namespace }}/{{ applications_ingester_image_name }}:{{ applications_ingester_sha }}
+  env_file:
+    - .env
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+  deploy:
+    resources:
+      limits:
+        memory: {{ applications_ingester_memory_limit }}
+        cpus: "{{ applications_ingester_cpu_limit }}"
+
+services:
+  raw-ingester:
+    <<: *common
+    container_name: enervision-raw-ingester
+    restart: unless-stopped
+    # Consommateur sans état durable (offsets côté Kafka).
+    oom_score_adj: 400
+    command: ["python", "-m", "app.main"]
+    networks:
+      - broker_network
+      - db_network
+
+  enriched-ingester:
+    <<: *common
+    container_name: enervision-enriched-ingester
+    restart: unless-stopped
+    oom_score_adj: 400
+    command: ["python", "-m", "app.enriched_consumer"]
+    networks:
+      - broker_network
+      - db_network
+{% if applications_ingester_site_sync_enabled | bool %}
+
+  # One-shot : tourne au déploiement (et à chaque bump de sha), sort quand il a
+  # fini. `restart: "no"` — pas relancé au redémarrage du démon.
+  site-sync:
+    <<: *common
+    container_name: enervision-site-sync
+    restart: "no"
+    command: ["python", "-m", "app.sync_sites"]
+    networks:
+      - db_network
+{% endif %}
+
+networks:
+  broker_network:
+    external: true
+    name: broker_network
+  db_network:
+    external: true
+    name: db_network

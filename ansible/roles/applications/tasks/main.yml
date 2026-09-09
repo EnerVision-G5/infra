@@ -209,6 +209,34 @@
     label: "{{ item.name }}"
   when: item.name in applications_changed
 
+# --------------------------------------------------------------------------
+# Schéma de la base : source de vérité = dépôt `database`. Un conteneur
+# one-shot `alembic upgrade head`, joué AVANT les conteneurs applicatifs pour
+# qu'ils ne démarrent jamais sur une base sans tables. Idempotent (lit
+# `alembic_version`) : rejoué à chaque deploy, ne fait rien si à jour.
+# --------------------------------------------------------------------------
+- name: Récupérer depuis GHCR l'image de migration `database`
+  community.docker.docker_image:
+    name: "{{ applications_image_namespace }}/{{ applications_database_image_name }}:{{ applications_database_sha }}"
+    source: pull
+    force_source: true
+  when: applications_database_sha | default('') | length > 0
+
+- name: Appliquer le schéma de la base (alembic upgrade head)
+  community.docker.docker_container:
+    name: enervision-db-migrate
+    image: "{{ applications_image_namespace }}/{{ applications_database_image_name }}:{{ applications_database_sha }}"
+    command: upgrade head
+    env:
+      DATABASE_URL: "{{ applications_database_migrate_url }}"
+    networks:
+      - name: db_network
+    detach: false
+    cleanup: true
+    state: started
+  no_log: true
+  when: applications_database_sha | default('') | length > 0
+
 - name: (Re)déployer chaque application via son compose dédié
   community.docker.docker_compose_v2:
     project_src: "{{ applications_dir }}/{{ item.name }}"
