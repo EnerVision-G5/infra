@@ -1,4 +1,6 @@
-# Promtail — découverte des conteneurs via le socket Docker, push vers Loki.
+# Promtail — logs des conteneurs (socket Docker) + journal systemd des
+# traitements datés (entraînement, dérive, rattrapages, sauvegarde), push
+# vers Loki.
 server:
   http_listen_port: 9080
   grpc_listen_port: 0
@@ -22,3 +24,21 @@ scrape_configs:
         target_label: "stream"
       - source_labels: ["__meta_docker_container_label_com_docker_compose_project"]
         target_label: "compose_project"
+
+  # Journal systemd : seules les unités des traitements datés. Leurs `oneshot`
+  # ne sont pas des conteneurs (docker_sd ne les voit pas) ; sans ça, un dump
+  # base qui échoue ou une sauvegarde qui n'atteint pas Azure ne laissent
+  # aucune trace dans Grafana.
+  - job_name: systemd-journal
+    journal:
+      max_age: 24h
+      labels:
+        job: systemd-journal
+    relabel_configs:
+      - source_labels: ["__journal__systemd_unit"]
+        target_label: "unit"
+      - source_labels: ["__journal_priority_keyword"]
+        target_label: "level"
+      - source_labels: ["__journal__systemd_unit"]
+        regex: "(training|drift|collector-backfill|etl-backfill|backup|backup-dump|backup-check)\\.service"
+        action: keep

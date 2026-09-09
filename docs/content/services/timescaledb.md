@@ -59,10 +59,11 @@ dépôt.
 
 ## Sauvegarde
 
-Toute la donnée vit dans le volume nommé **`timescaledb_data`**, indépendant
-de l'image : le sauvegarder au niveau volume, ou faire un dump logique
-(`pg_dump` dans le conteneur, en lisant `POSTGRES_USER` / `POSTGRES_DB` de son
-environnement).
+Le rôle [`backup`](backup.md) fait un **dump logique** quotidien
+(`pg_dump --format=custom` + `pg_dumpall --globals-only` dans le conteneur)
+poussé chiffré vers Azure Blob par restic. Restauration TimescaleDB : encadrer
+`pg_restore` par `timescaledb_pre_restore()` / `timescaledb_post_restore()` —
+voir la page [Backup](backup.md).
 
 ## Dépannage
 

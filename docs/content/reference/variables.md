@@ -48,6 +48,22 @@ Les rôles portent chacun leurs propres défauts dans `defaults/main.yml` ;
 | `monitoring_grafana_admin_user` | `admin` |
 | `monitoring_prometheus_retention` *(défaut rôle)* | `15d` |
 
+## Backup
+
+| Variable | Valeur |
+|---|---|
+| `backup_azure_account_name` | `stenervisiontfca5c57` |
+| `backup_azure_container` | `prod-backups` |
+| `backup_azure_client_id` | `api-rw.client_id` (identité fédérée PROD) |
+| `backup_azure_tenant_id` | locataire Azure |
+| `backup_workload_subject` | `prod/api-rw` |
+| `backup_workload_kid` | `prod-20260908` |
+| `backup_restic_image` *(défaut rôle)* | `restic/restic:0.19.1` |
+| `backup_keep_daily / weekly / monthly / yearly` *(défaut rôle)* | `7 / 1 / 3 / 1` |
+| `backup_dump_on_calendar` *(défaut rôle)* | `*-*-* 02:00:00` |
+| `backup_on_calendar` *(défaut rôle)* | `*-*-* 04:00:00` |
+| `backup_check_on_calendar` *(défaut rôle)* | `Sun *-*-* 05:00:00` |
+
 ## Applications — hôtes et réglages
 
 | Variable | Valeur |
@@ -129,3 +145,5 @@ docker_external_networks:
 | `applications_predict_s3_secret_access_key` | `vault_garage_s3_secret_access_key` | serving, training, etl |
 | `applications_mlflow_basic_auth_users` | `vault_applications_mlflow_basic_auth_users` | mlflow (si exposé) |
 | `ansible_password` | `vault_ansible_ssh_password` | connexion SSH (`hosts.yml`) |
+| `backup_restic_password` | `vault_backup_restic_password` | backup (chiffrement du dépôt restic) |
+| `backup_workload_issuer_key` | `vault_workload_issuer_key` | backup (clé privée de l'émetteur) |

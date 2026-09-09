@@ -35,16 +35,30 @@ traefik          traefik:8082
 
 ## Logs — Promtail → Loki
 
-Promtail utilise `docker_sd_configs` (socket Docker) : il découvre **tous**
-les conteneurs et pousse leurs logs à Loki avec les labels `container`,
-`stream`, `compose_project`.
+Promtail a deux sources :
+
+- `docker_sd_configs` (socket Docker) : **tous** les conteneurs, labels
+  `container`, `stream`, `compose_project` ;
+- `journal` : le journal systemd de l'hôte, **filtré** sur les unités des
+  traitements datés (`training`, `drift`, `collector-backfill`,
+  `etl-backfill`, `backup`, `backup-dump`, `backup-check`) — leurs `oneshot`
+  ne sont pas des conteneurs. Labels `unit`, `level`. Promtail tourne en
+  `root` et monte `/var/log/journal` + `/run/log/journal` + `/etc/machine-id`
+  en lecture seule.
 
 Requête type dans Grafana → Explore → source **Loki** :
 
 ```logql
 {container="enervision-api"}
 {compose_project="enervision-serving"} |= "ERROR"
+{unit=~"backup.*"}
+{unit="training.service", level="err"}
 ```
+
+Le volume `loki_data` (chunks + index) est sauvegardé quotidiennement vers
+Azure Blob par le rôle [`backup`](backup.md). `prometheus_data` et
+`grafana_data`, eux, ne le sont pas : séries jetables et provisioning
+regénéré.
 
 ## Grafana
 

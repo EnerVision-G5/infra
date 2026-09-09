@@ -31,6 +31,19 @@ timescaledb_user: "enervision"
 monitoring_grafana_host: "grafana.enervision.com"
 monitoring_grafana_admin_user: "admin"
 
+# BACKUP (restic → Azure Blob, chiffré côté client)
+# Le dépôt vit dans le conteneur `prod-backups` (Terraform : storage_containers
+# de l'environnement PROD). La clé partagée du compte étant désactivée, restic
+# s'authentifie via l'identité fédérée `api-rw` (la même que celle prévue pour
+# l'écriture blob de l'API PROD) — aucun secret côté Azure.
+backup_azure_account_name: "stenervisiontfca5c57"
+backup_azure_container: "prod-backups"
+backup_azure_client_id: "5736ac0c-9e7a-4d32-8779-74eee2660b16"
+backup_azure_tenant_id: "7f4f3591-5f6c-4f7b-a1bd-0a2dd8831218"
+backup_workload_issuer: "https://stenervisiontfca5c57.z28.web.core.windows.net/prod"
+backup_workload_subject: "prod/api-rw"
+backup_workload_kid: "prod-20260908"
+
 # APPLICATIONS (Front / API / Serving)
 applications_front_host: "app.enervision.com"
 applications_api_host: "api.enervision.com"
@@ -151,6 +164,13 @@ ghcr_username: "{{ vault_ghcr_username }}"
 ghcr_token: "{{ vault_ghcr_token }}"
 
 monitoring_grafana_admin_password: "{{ vault_monitoring_grafana_admin_password }}"
+
+# Sauvegarde : clé de chiffrement du dépôt restic (>= 32 caractères, générée
+# puis conservée HORS de la VM — la perdre, c'est perdre toutes les
+# sauvegardes) et clé privée de l'émetteur, partagée avec le futur
+# rattachement blob de l'API.
+backup_restic_password: "{{ vault_backup_restic_password }}"
+backup_workload_issuer_key: "{{ vault_workload_issuer_key }}"
 
 # Clé S3 lue par serving et training pour atteindre Garage. Produite par
 # `garage key create`, jamais choisie à la main. Le `default('')` laisse le

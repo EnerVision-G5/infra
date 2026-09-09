@@ -1,0 +1,11 @@
+# Déployé par le rôle Ansible "backup" — ne pas éditer sur l'hôte.
+[Unit]
+Description=EnerVision — planification du contrôle du dépôt restic
+
+[Timer]
+OnCalendar={{ backup_check_on_calendar }}
+Persistent=true
+RandomizedDelaySec={{ backup_randomized_delay_seconds }}
+
+[Install]
+WantedBy=timers.target

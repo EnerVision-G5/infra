@@ -1,0 +1,23 @@
+# Déployé par le rôle Ansible "backup" — ne pas éditer sur l'hôte.
+[Unit]
+Description=EnerVision — contrôle structurel du dépôt restic
+Documentation=https://github.com/EnerVision-G5/infra
+After=docker.service
+Requires=docker.service
+
+StartLimitIntervalSec={{ backup_restart_window_seconds }}
+StartLimitBurst={{ backup_restart_attempts }}
+
+[Service]
+Type=oneshot
+
+# Même verrou partagé : le contrôle lit tout l'index du dépôt, autant ne pas
+# le lancer pendant une sauvegarde ou un entraînement.
+ExecStart=/usr/bin/flock --wait {{ backup_lock_wait_seconds }} \
+  {{ backup_lock }} \
+  {{ backup_script_dir }}/enervision-backup check
+
+TimeoutStartSec={{ backup_check_timeout_seconds }}
+
+Restart=on-failure
+RestartSec={{ backup_restart_delay_seconds }}

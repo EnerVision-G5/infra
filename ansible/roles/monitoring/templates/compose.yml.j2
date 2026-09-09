@@ -113,6 +113,11 @@ services:
     container_name: promtail
     restart: unless-stopped
 
+    # root : lire le journal systemd de l'hôte (fichiers root:systemd-journal,
+    # groupe absent du conteneur) et le socket Docker. Même posture que
+    # cadvisor/node-exporter, qui en ont autant besoin.
+    user: "0:0"
+
     command:
       - -config.file=/etc/promtail/promtail-config.yml
 
@@ -120,6 +125,11 @@ services:
       - ./promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - promtail_data:/tmp
+      # Journal systemd de l'hôte, en lecture seule, pour le scrape des unités
+      # des traitements datés. /etc/machine-id est requis par la lib sd-journal.
+      - /var/log/journal:/var/log/journal:ro
+      - /run/log/journal:/run/log/journal:ro
+      - /etc/machine-id:/etc/machine-id:ro
 
     networks:
       - monitoring_network
@@ -145,10 +155,11 @@ services:
       - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
       # Sans ce collecteur, une unité systemd en échec n'existe pas pour
       # Prometheus : ni un entraînement tué à son plafond, ni un drift qui
-      # annonce une dérive par son code de sortie. Ils sont pourtant la
-      # moitié de ce qu'il y a à surveiller sur cette machine.
+      # annonce une dérive par son code de sortie, ni une sauvegarde qui
+      # n'a pas atteint Azure. Ils sont pourtant la moitié de ce qu'il y a
+      # à surveiller sur cette machine.
       - --collector.systemd
-      - --collector.systemd.unit-include=^(training|drift|collector-backfill|etl-backfill)\.service$$
+      - --collector.systemd.unit-include=^(training|drift|collector-backfill|etl-backfill|backup|backup-dump|backup-check)\.service$$
 
     volumes:
       - /:/host:ro,rslave

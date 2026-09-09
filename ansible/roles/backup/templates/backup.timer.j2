@@ -1,0 +1,13 @@
+# Déployé par le rôle Ansible "backup" — ne pas éditer sur l'hôte.
+[Unit]
+Description=EnerVision — planification de l'envoi des sauvegardes vers Azure
+
+[Timer]
+OnCalendar={{ backup_on_calendar }}
+# Rejoue l'occurrence manquée si la VM était éteinte à l'heure prévue.
+Persistent=true
+# Étale le déclenchement pour ne pas taper Azure à la seconde près.
+RandomizedDelaySec={{ backup_randomized_delay_seconds }}
+
+[Install]
+WantedBy=timers.target

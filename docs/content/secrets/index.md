@@ -31,6 +31,8 @@ et [`check-secrets.sh`](verification.md) le vérifie en CI.
 | `applications_predict_s3_access_key_id` | `vault_garage_s3_access_key_id` | serving, training, etl |
 | `applications_predict_s3_secret_access_key` | `vault_garage_s3_secret_access_key` | serving, training, etl |
 | `applications_mlflow_basic_auth_users` | `vault_applications_mlflow_basic_auth_users` | mlflow (si exposé) — format htpasswd |
+| `backup_restic_password` | `vault_backup_restic_password` | backup — clé de chiffrement du dépôt restic (≥ 32 car.) |
+| `backup_workload_issuer_key` | `vault_workload_issuer_key` | backup — clé privée de l'émetteur (JWT d'identité fédérée) |
 
 !!! note "Nom de clé historique"
     `applications_api_jwt_secret` pointe `vault_applications_api_secret_key`
