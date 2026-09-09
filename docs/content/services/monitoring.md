@@ -68,11 +68,17 @@ regénéré.
 - **Dashboards provisionnés**, lus depuis des fichiers, **non modifiables**
   depuis l'UI :
 
-    | Dashboard | ID Grafana.com |
+    | Dashboard | Source |
     |---|---|
-    | Node Exporter Full | 1860 |
-    | cAdvisor | 21743 |
-    | Traefik | 17346 |
+    | Node Exporter Full | Grafana.com 1860 |
+    | cAdvisor | Grafana.com 21743 |
+    | Traefik | Grafana.com 17346 |
+    | Sauvegardes | maison (`dashboards/backup.json`) |
+
+    Le dashboard **Sauvegardes** est alimenté par le collecteur `textfile` de
+    node-exporter : le script `enervision-backup` dépose un `.prom` par phase
+    dans `/var/lib/node_exporter/textfile` (voir
+    [Backup › Logs et supervision](backup.md#logs-et-supervision)).
 
 ## Alertes
 
@@ -91,6 +97,7 @@ Deux groupes, et le second est la vraie nouveauté.
 | Mémoire de la VM | Prometheus | moins de 15 % disponible, 10 min |
 | Conteneur près de son plafond | Prometheus | > 90 % de SON plafond, 10 min |
 | Traitement daté en échec | Prometheus | une unité systemd `failed`, 5 min |
+| Sauvegarde hors-site trop ancienne | Prometheus | dernier snapshot restic > 26 h (ou aucune métrique), 1 h |
 | L'ETL ne publie aucune variable | Loki | 2 cycles à `0 heure(s) publiée(s)` |
 | Aucune prédiction archivée | Loki | `Tous les sites ont échoué` |
 | La collecte n'écrit plus | Loki | aucun `tick :` depuis 2 h |

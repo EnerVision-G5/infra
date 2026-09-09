@@ -16,6 +16,12 @@ monitoring_prometheus_retention: "15d"
 # Port interne de Grafana (exposé uniquement via Traefik)
 monitoring_grafana_port: 3000
 
+# Collecteur `textfile` de node-exporter : dossier hôte des fichiers `.prom`
+# déposés par les traitements datés (aujourd'hui le rôle backup). Monté en
+# lecture seule dans le conteneur node-exporter. Même valeur que
+# backup_textfile_dir — voir group_vars/all/vars.yml.
+monitoring_textfile_dir: "{{ node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}"
+
 # monitoring_grafana_host / monitoring_grafana_admin_user /
 # monitoring_grafana_admin_password : définis dans group_vars (mot de passe
 # idéalement chiffré avec ansible-vault). Pas de valeur par défaut pour le

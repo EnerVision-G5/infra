@@ -17,6 +17,11 @@
     # provisioning n'existent pas (le dossier parent est monté en entier).
     - "{{ monitoring_dir }}/grafana/provisioning/plugins"
     - "{{ monitoring_dir }}/grafana/provisioning/alerting"
+    # Collecteur textfile de node-exporter : doit exister avant que le
+    # conteneur ne démarre (sinon le bind-mount le crée root:root sans que
+    # node-exporter puisse forcément le relire). Les `.prom` y sont déposés
+    # par le rôle backup.
+    - "{{ monitoring_textfile_dir }}"
 
 - name: Generate monitoring docker compose file
   ansible.builtin.template:
@@ -93,7 +98,7 @@
     state: absent
   when: not (monitoring_alerting_enabled | bool)
 
-- name: Deploy Grafana dashboards (Node Exporter 1860, cAdvisor 21743, Traefik 17346)
+- name: Deploy Grafana dashboards (Node Exporter 1860, cAdvisor 21743, Traefik 17346, Sauvegardes)
   ansible.builtin.copy:
     src: dashboards/
     dest: "{{ monitoring_dir }}/grafana/provisioning/dashboards/json/"

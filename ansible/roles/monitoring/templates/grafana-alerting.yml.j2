@@ -142,6 +142,48 @@ groups:
         noDataState: NoData
         execErrState: Error
 
+      - uid: enervision-sauvegarde-agee
+        title: Sauvegarde hors-site trop ancienne
+        # Une unité `backup.service` en échec est déjà couverte par la règle
+        # ci-dessus. Celle-ci attrape l'autre moitié : le timer qui ne se
+        # déclenche plus, la VM éteinte à 04:00, le run qui « réussit » mais
+        # n'écrit rien. On regarde l'âge du snapshot le plus récent, pas le
+        # code de sortie. 26 h = une nuit manquée. NoData compte comme une
+        # alerte : pas de métrique = pas de sauvegarde (ou textfile cassé).
+        condition: seuil
+        for: 1h
+        labels:
+          severity: critique
+        annotations:
+          summary: >-
+            Aucun snapshot restic poussé vers Azure depuis plus de 26 h.
+          runbook: >-
+            journalctl -u backup.service -u backup-dump.service -n 100 ;
+            systemctl list-timers 'backup*'. Relancer à la main :
+            `systemctl start backup-dump.service && systemctl start backup.service`.
+            Détail : docs/services/backup.md.
+        data:
+          - refId: mesure
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: mesure
+              instant: true
+              expr: >-
+                time() - max(enervision_backup_snapshot_timestamp_seconds)
+          - refId: seuil
+            datasourceUid: __expr__
+            model:
+              refId: seuil
+              type: threshold
+              expression: mesure
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [93600]
+        noDataState: Alerting
+        execErrState: Error
+
   - orgId: 1
     name: chaine
     folder: EnerVision

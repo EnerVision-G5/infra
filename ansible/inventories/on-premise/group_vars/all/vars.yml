@@ -31,6 +31,11 @@ timescaledb_user: "enervision"
 monitoring_grafana_host: "grafana.enervision.com"
 monitoring_grafana_admin_user: "admin"
 
+# Dossier des métriques `.prom` (collecteur `textfile` de node-exporter) :
+# écrit par le rôle backup après chaque phase, monté en lecture seule dans
+# node-exporter par le rôle monitoring. Un seul chemin, deux rôles.
+node_exporter_textfile_dir: "/var/lib/node_exporter/textfile"
+
 # BACKUP (restic → Azure Blob, chiffré côté client)
 # Le dépôt partage le conteneur `prod-data` sous le préfixe `restic/` (quota
 # de conteneurs limité pendant l'examen). La clé partagée du compte étant
