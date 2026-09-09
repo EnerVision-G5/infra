@@ -32,12 +32,12 @@ monitoring_grafana_host: "grafana.enervision.com"
 monitoring_grafana_admin_user: "admin"
 
 # BACKUP (restic → Azure Blob, chiffré côté client)
-# Le dépôt vit dans le conteneur `prod-backups` (Terraform : storage_containers
-# de l'environnement PROD). La clé partagée du compte étant désactivée, restic
-# s'authentifie via l'identité fédérée `api-rw` (la même que celle prévue pour
-# l'écriture blob de l'API PROD) — aucun secret côté Azure.
+# Le dépôt partage le conteneur `prod-data` sous le préfixe `restic/` (quota
+# de conteneurs limité pendant l'examen). La clé partagée du compte étant
+# désactivée, restic s'authentifie via l'identité fédérée `api-rw` (la même
+# que celle prévue pour l'écriture blob de l'API PROD) — aucun secret Azure.
 backup_azure_account_name: "stenervisiontfca5c57"
-backup_azure_container: "prod-backups"
+backup_azure_container: "prod-data"
 backup_azure_client_id: "5736ac0c-9e7a-4d32-8779-74eee2660b16"
 backup_azure_tenant_id: "7f4f3591-5f6c-4f7b-a1bd-0a2dd8831218"
 backup_workload_issuer: "https://stenervisiontfca5c57.z28.web.core.windows.net/prod"

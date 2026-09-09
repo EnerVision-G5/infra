@@ -2,7 +2,8 @@
 
 Sauvegarde chiffrée hors-site de ce qui ne se reconstruit pas : la base, les
 métadonnées et les données Garage, les journaux du monitoring. Outil
-[restic](https://restic.net/), dépôt sur un conteneur Azure Blob.
+[restic](https://restic.net/), dépôt dans Azure Blob (`prod-data`, préfixe
+`restic/`).
 
 | | |
 |---|---|
@@ -51,7 +52,7 @@ blobs opaques. La clé du dépôt est `vault_backup_restic_password` — voir
 
 | Clé | Vient de |
 |---|---|
-| `RESTIC_REPOSITORY` | `azure:{{ backup_azure_container }}:/` (`prod-backups`) |
+| `RESTIC_REPOSITORY` | `azure:prod-data:/restic` (préfixe `restic/` du conteneur `prod-data`) |
 | `RESTIC_PASSWORD` | `vault_backup_restic_password` |
 | `AZURE_ACCOUNT_NAME` | `backup_azure_account_name` |
 | `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` | `backup_azure_client_id` / `backup_azure_tenant_id` (`vars.yml`) |
@@ -181,10 +182,15 @@ dans le volume `monitoring_loki_data` avec Loki arrêté.
 
 !!! note "L'identité `api-rw` doit exister côté Azure"
     `backup_azure_client_id` / `backup_azure_tenant_id` / `backup_workload_*`
-    (`vars.yml`) pointent l'identité fédérée `api-rw` de PROD. Le
-    `terraform apply` de PROD (qui ajoute aussi le conteneur `prod-backups`)
-    doit avoir été passé. Le rôle refuse de se déployer si ces variables
+    (`vars.yml`) pointent l'identité fédérée `api-rw` de PROD, créée par le
+    `terraform apply` de PROD. Le rôle refuse de se déployer si ces variables
     sont vides.
+
+!!! note "Dépôt dans `prod-data`, préfixe `restic/`"
+    Faute de quota pour un conteneur dédié, le dépôt restic partage
+    `prod-data` avec les blobs de l'API, sous le préfixe `restic/`
+    (`backup_azure_prefix`). Le chiffrement restic isole le contenu ; ne pas
+    supprimer `prod-data/restic/**` à la main.
 
 !!! note "Un dump en clair vit ~2 h sur la VM"
     Entre `backup-dump` (02:00) et `backup` (04:00), le dump de la base est
@@ -198,7 +204,7 @@ dans le volume `monitoring_loki_data` avec Loki arrêté.
 |---|---|
 | `AADSTS700213` / `no matching federated identity` | `backup_workload_subject` ou `backup_workload_issuer` ne correspond pas à l'identifiant fédéré `api-rw` (Terraform) |
 | `AADSTS700211` / erreur de signature | `backup_workload_kid` ou la clé privée ne sont pas ceux du JWKS publié ; cache Entra ID jusqu'à 1 h après une rotation |
-| `AuthorizationPermissionMismatch` | l'identité `api-rw` n'a pas *Storage Blob Data Contributor* sur `prod-backups` — rejouer `terraform apply` PROD (conteneur ajouté) |
+| `AuthorizationPermissionMismatch` | l'identité `api-rw` n'a pas *Storage Blob Data Contributor* sur `prod-data` — vérifier `terraform apply` PROD |
 | `Fatal: repository master key and config already initialized` sur `restic init` | normal si relancé — le script fait `restic cat config \|\| restic init` |
 | `backup.service` tué à 90 s | `TimeoutStartSec` non pris en compte — vérifier que l'unité déployée est bien celle du rôle |
 | `flock: … Temporary failure` | une autre tâche lourde tient `/run/enervision-jobs.lock` depuis plus d'une heure |

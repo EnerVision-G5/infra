@@ -53,7 +53,8 @@ Les rôles portent chacun leurs propres défauts dans `defaults/main.yml` ;
 | Variable | Valeur |
 |---|---|
 | `backup_azure_account_name` | `stenervisiontfca5c57` |
-| `backup_azure_container` | `prod-backups` |
+| `backup_azure_container` | `prod-data` |
+| `backup_azure_prefix` *(défaut rôle)* | `restic` (préfixe du dépôt dans le conteneur) |
 | `backup_azure_client_id` | `api-rw.client_id` (identité fédérée PROD) |
 | `backup_azure_tenant_id` | locataire Azure |
 | `backup_workload_subject` | `prod/api-rw` |

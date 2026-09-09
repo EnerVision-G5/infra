@@ -14,13 +14,15 @@ backup_restic_image: "restic/restic:0.19.1"
 # --------------------------------------------------------------------------
 # Dépôt restic
 #
-# Le dépôt vit dans le conteneur Azure Blob de l'environnement (prod-backups),
-# créé par Terraform (`storage_containers`). restic chiffre TOUT côté client
+# Partage le conteneur `prod-data` (quota de conteneurs limité pendant
+# l'examen) sous le préfixe `restic/` : le dépôt est isolé des blobs de
+# l'API, qui écrit à la racine du conteneur. restic chiffre TOUT côté client
 # avant l'envoi : contenu, noms de fichiers, arborescence, métadonnées. La
 # clé du dépôt est `vault_backup_restic_password` — la perdre, c'est perdre
 # l'accès à toutes les sauvegardes.
 # --------------------------------------------------------------------------
-backup_repository: "azure:{{ backup_azure_container }}:/"
+backup_azure_prefix: "restic"
+backup_repository: "azure:{{ backup_azure_container }}:/{{ backup_azure_prefix }}"
 backup_restic_compression: "auto"
 
 # backup_restic_password : OBLIGATOIRE — `vault_backup_restic_password`,
@@ -41,8 +43,8 @@ backup_restic_compression: "auto"
 #
 # backup_azure_account_name / backup_azure_container / backup_azure_client_id
 # / backup_azure_tenant_id / backup_workload_issuer / backup_workload_subject
-# / backup_workload_kid : renseignés dans group_vars (vars.yml), après le
-# `terraform apply` de PROD.
+# / backup_workload_kid : renseignés dans group_vars (vars.yml). Ils supposent
+# que l'identité `api-rw` PROD existe côté Azure (`terraform apply` PROD).
 backup_workload_key_file: "{{ backup_dir }}/issuer.pem"
 backup_azure_authority_host: "https://login.microsoftonline.com/"
 

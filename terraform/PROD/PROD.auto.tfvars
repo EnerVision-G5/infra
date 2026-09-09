@@ -18,11 +18,11 @@ team = {
   "landry.guillet2023@campus-eni.fr"  = { role = "member", object_id = "ac9418af-bec4-48a1-a701-6ad85e7fca5e" }
 }
 
-# Compte du projet (bootstrap) ; conteneurs préfixés : prod-data, prod-backups
-# prod-backups : dépôt restic du rôle Ansible `backup` (base, Garage, logs
-# monitoring), chiffré côté client. Écrit par l'identité api-rw.
+# Compte du projet (bootstrap) ; conteneurs préfixés : prod-data
+# Le rôle Ansible `backup` (restic) partage prod-data sous le préfixe
+# `restic/` — quota de conteneurs limité pendant l'examen.
 storage_account_name = "stenervisiontfca5c57"
-storage_containers   = ["data", "backups"]
+storage_containers   = ["data"]
 
 # Identités (objectId) qui lisent et écrivent les blobs : applications, identités managées
 storage_blob_contributor_principal_ids = []
