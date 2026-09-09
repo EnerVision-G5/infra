@@ -45,6 +45,40 @@
     quiet: true
   when: "'front' in applications_enabled"
 
+- name: Vérifier la configuration des identités applicatives Azure
+  ansible.builtin.assert:
+    that:
+      - applications_workload_key | default('') | length > 0
+      - "'BEGIN' in applications_workload_key"
+      - "'REMPLACER' not in applications_workload_key"
+      - applications_azure_tenant_id | default('') | length > 0
+      - applications_workload_issuer | default('') | length > 0
+      - applications_workload_kid | default('') | length > 0
+      - applications_blob_account_url | default('') | length > 0
+      - applications_blob_container | default('') | length > 0
+    fail_msg: >-
+      Un service à identité applicative est activé mais la configuration Azure
+      est incomplète. applications_workload_key (clé privée PEM de l'émetteur)
+      va dans le vault ; les autres valeurs viennent de `terraform output`
+      (workload_issuer, blob_endpoint, storage_containers) et `az account show`.
+      Voir terraform/docs/identites-applicatives.md.
+    quiet: true
+  no_log: true
+  when: applications_services | selectattr('workload_key', 'defined')
+    | selectattr('workload_key') | list | length > 0
+
+- name: Vérifier que raw-archiver a une identité et un sujet
+  ansible.builtin.assert:
+    that:
+      - applications_raw_archiver_azure_client_id | default('') | length > 0
+      - applications_raw_archiver_workload_subject | default('') | length > 0
+    fail_msg: >-
+      raw-archiver est activé mais applications_raw_archiver_azure_client_id /
+      _workload_subject sont vides. Les prendre dans
+      `terraform output workload_identities` (identité `api-rw`).
+    quiet: true
+  when: "'raw-archiver' in applications_enabled"
+
 - name: Vérifier qu'au moins une application est activée
   ansible.builtin.assert:
     that:
@@ -106,6 +140,20 @@
     registry: "{{ applications_registry }}"
     username: "{{ ghcr_username }}"
     password: "{{ ghcr_token }}"
+  no_log: true
+
+- name: Déposer la clé privée de l'émetteur pour les services à identité Azure
+  ansible.builtin.copy:
+    content: "{{ applications_workload_key }}"
+    dest: "{{ applications_dir }}/{{ item.name }}/{{ applications_workload_key_filename }}"
+    # Propriété = uid du conteneur : la clé est montée en lecture seule et lue
+    # par un utilisateur non-root dans l'image.
+    owner: "{{ item.workload_key_uid | default('root') }}"
+    group: "{{ item.workload_key_uid | default('root') }}"
+    mode: "0400"
+  loop: "{{ applications_services | selectattr('workload_key', 'defined') | selectattr('workload_key') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
   no_log: true
 
 - name: Générer le fichier d'environnement de chaque application

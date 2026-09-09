@@ -39,6 +39,7 @@ dans le pipeline du dépôt qui publie l'image. On ne déploie **jamais**
 | front | `enervision-g5/dashboard` | `applications_front_sha` | `dashboard` |
 | api | `enervision-g5/api` | `applications_api_sha` | `api` |
 | collector | `enervision-g5/collector` | `applications_collector_sha` | `collector` |
+| raw-archiver | `enervision-g5/raw-archiver` | `applications_raw_archiver_sha` | `raw-archiver` |
 
 Chaque dépôt a un workflow `cd.yml` qui publie une image sous `sha-<git-sha>`.
 Le rôle contrôle l'unicité du couple `image:tag`.

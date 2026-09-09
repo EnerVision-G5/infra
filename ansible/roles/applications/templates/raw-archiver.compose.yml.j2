@@ -1,0 +1,52 @@
+# Déployé par le rôle Ansible "applications" — ne pas éditer sur l'hôte.
+# raw-archiver (dépôt `raw-archiver`) — consomme energy.data.raw et archive en
+# Parquet sur Azure Blob ({{ applications_blob_container }}/{{ applications_raw_archiver_blob_prefix }}/dt=…/…parquet).
+# Processus long, sans port. Écrit → identité fédérée `api-rw`.
+services:
+  raw-archiver:
+    image: {{ applications_image_namespace }}/{{ applications_raw_archiver_image_name }}:{{ applications_raw_archiver_sha }}
+    container_name: enervision-raw-archiver
+    restart: unless-stopped
+    # Consommateur sans état durable (offsets côté Kafka) : le relancer ne coûte
+    # que son démarrage. Il cède le pas à tout ce qui porte de la donnée.
+    oom_score_adj: 500
+
+    env_file:
+      - .env
+
+    # Clé privée de l'émetteur (déposée par Ansible, 0600). Le service la relit
+    # à chaque renouvellement de jeton : rotation possible sans redémarrage.
+    volumes:
+      - ./{{ applications_workload_key_filename }}:{{ applications_workload_key_path_in_container }}:ro
+
+    networks:
+{% for network in applications_raw_archiver_networks %}
+      - {{ network }}
+{% endfor %}
+
+    # Durcissement (repris du compose du dépôt) : le service n'écrit que sur
+    # /tmp (buffers pyarrow / SDK Azure) et n'a besoin d'aucun privilège.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+    deploy:
+      resources:
+        limits:
+          memory: {{ applications_raw_archiver_memory_limit }}
+          cpus: "{{ applications_raw_archiver_cpu_limit }}"
+
+networks:
+{% for network in applications_raw_archiver_networks %}
+  {{ network }}:
+    external: true
+    name: {{ network }}
+{% endfor %}

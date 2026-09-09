@@ -12,6 +12,7 @@ applications_image_namespace: "ghcr.io/enervision-g5"
 applications_front_image_name: dashboard
 applications_api_image_name: api
 applications_collector_image_name: collector
+applications_raw_archiver_image_name: raw-archiver
 
 # --------------------------------------------------------------------------
 # Versions déployées — un SHA par image. Chaque valeur est le tag GHCR immuable
@@ -22,6 +23,7 @@ applications_collector_image_name: collector
 applications_front_sha: ""
 applications_api_sha: ""
 applications_collector_sha: ""
+applications_raw_archiver_sha: ""
 
 # Domaines publics (routage Traefik). Surchargeables dans group_vars.
 applications_front_host: "app.enervision.com"
@@ -56,6 +58,9 @@ applications_api_cpu_limit: "1.5"
 
 applications_collector_memory_limit: 256M
 applications_collector_cpu_limit: "0.5"
+
+applications_raw_archiver_memory_limit: 384M
+applications_raw_archiver_cpu_limit: "0.5"
 
 # Connexion applicative de l'API à la base, construite depuis les variables du
 # rôle postgres (mot de passe chiffré avec ansible-vault). L'hôte `postgres`
@@ -135,12 +140,56 @@ applications_collector_poll_interval: 60
 applications_collector_sites: "SITE001,SITE002,SITE003,SITE004,SITE005"
 
 # --------------------------------------------------------------------------
+# Identités applicatives Azure — accès aux blobs SANS clé de compte, par
+# fédération d'identité (cf. terraform/docs/identites-applicatives.md).
+# Le service signe un JWT court avec la clé privée de l'émetteur de
+# l'environnement ; Entra ID l'échange contre l'identité managée `api-rw`
+# (écriture) ou `api-ro` (lecture).
+#
+# Ces valeurs sont communes à tous les services blob ; seuls le client_id et
+# le subject changent d'un service à l'autre (renseignés en group_vars).
+# --------------------------------------------------------------------------
+# applications_workload_key : contenu PEM de la clé privée. Pas de défaut
+# (secret) — rattaché en group_vars par indirection Vault. Le rôle l'écrit
+# dans /opt/srv/applications/<name>/issuer.pem (0600) pour les services dont
+# le catalogue porte `workload_key: true`, et le monte en lecture seule.
+applications_workload_key_filename: "issuer.pem"
+applications_workload_key_path_in_container: "/run/secrets/issuer-dev.pem"
+
+# Renseignés en group_vars (sorties Terraform de l'environnement).
+applications_azure_tenant_id: ""
+applications_workload_issuer: ""
+applications_workload_kid: ""
+applications_blob_account_url: ""
+applications_blob_container: ""
+
+# --------------------------------------------------------------------------
+# raw-archiver (dépôt `raw-archiver`) — consomme energy.data.raw et archive en
+# Parquet sur Azure Blob (<container>/raw/dt=…/…parquet). Processus long, sans
+# port. Écrit → identité `api-rw`.
+# --------------------------------------------------------------------------
+applications_raw_archiver_networks:
+  - broker_network
+applications_raw_archiver_kafka_bootstrap: "kafka:9092"
+applications_raw_archiver_kafka_topic: "energy.data.raw"
+applications_raw_archiver_kafka_group_id: "raw-archiver"
+applications_raw_archiver_blob_prefix: "raw"
+# Flush du buffer vers le blob : dès qu'une des deux limites est atteinte.
+applications_raw_archiver_flush_interval_seconds: 300
+applications_raw_archiver_flush_max_rows: 5000
+# Identité demandée (api-rw = écriture) et sujet du jeton — renseignés en
+# group_vars depuis `terraform output workload_identities`.
+applications_raw_archiver_azure_client_id: ""
+applications_raw_archiver_workload_subject: ""
+
+# --------------------------------------------------------------------------
 # Catalogue des applications connues. Le nom sert de sous-dossier et de préfixe
 # de template (<name>.compose.yml.j2, <name>.env.j2).
 #
 # kind :
 #   web    — service HTTP exposé derrière Traefik (front, api) ;
-#   worker — processus long sans port ni route (collector).
+#   worker — processus long sans port ni route (collector, raw-archiver).
+# workload_key: true → le rôle dépose issuer.pem et le compose le monte.
 # --------------------------------------------------------------------------
 applications_services_catalog:
   - name: front
@@ -155,6 +204,14 @@ applications_services_catalog:
     kind: worker
     image: "{{ applications_image_namespace }}/{{ applications_collector_image_name }}:{{ applications_collector_sha }}"
     sha: "{{ applications_collector_sha }}"
+  - name: raw-archiver
+    kind: worker
+    image: "{{ applications_image_namespace }}/{{ applications_raw_archiver_image_name }}:{{ applications_raw_archiver_sha }}"
+    sha: "{{ applications_raw_archiver_sha }}"
+    workload_key: true
+    # uid du conteneur (Dockerfile : useradd --uid 10001 archiver) — la clé
+    # privée montée doit lui appartenir, sinon PermissionError à la lecture.
+    workload_key_uid: 10001
 
 # Applications effectivement déployées. Filtre le catalogue : une application
 # absente n'est ni configurée, ni tirée, ni démarrée. Surchargeable dans
@@ -163,6 +220,7 @@ applications_enabled:
   - front
   - api
   - collector
+  - raw-archiver
 
 # Liste consommée par les tasks : le catalogue restreint aux applications
 # activées, dans l'ordre du catalogue.

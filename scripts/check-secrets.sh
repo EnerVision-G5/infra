@@ -53,6 +53,7 @@ secret_vars=(
   monitoring_grafana_admin_password
   applications_api_jwt_secret
   mlflow_azure_connection_string
+  applications_workload_key
   ansible_password
 )
 

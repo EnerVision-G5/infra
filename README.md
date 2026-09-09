@@ -370,6 +370,7 @@ dans le dépôt.
 | `monitoring_grafana_admin_password`  | `vault_monitoring_grafana_admin_password` | `monitoring` |
 | `applications_api_jwt_secret`        | `vault_applications_api_secret_key`     | `applications` |
 | `mlflow_azure_connection_string`     | `vault_mlflow_azure_connection_string`  | `mlflow` *(si artefacts `wasbs://`)* |
+| `applications_workload_key`          | `vault_workload_issuer_key`             | `applications` — raw-archiver (clé privée émetteur d'identités) |
 | `ansible_password`                   | `vault_ansible_ssh_password`            | connexion SSH à l'hôte (`hosts.yml`) |
 
 Pour ajouter un secret : le déclarer dans `vault.yml` sous `vault_<nom>`

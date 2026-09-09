@@ -86,6 +86,19 @@ Les rôles portent chacun leurs propres défauts dans `defaults/main.yml` ;
 | `applications_collector_sites` *(défaut rôle)* | `SITE001,…,SITE005` |
 | `applications_collector_networks` *(défaut rôle)* | `[broker_network]` |
 
+### Identités applicatives Azure (raw-archiver, plus tard prediction-api)
+
+| Variable | Valeur (env DEV) | Source |
+|---|---|---|
+| `applications_azure_tenant_id` | `7f4f3591-…` | `az account show --query tenantId` |
+| `applications_workload_issuer` | `https://stenervisiontfca5c57.z28.web.core.windows.net/dev` | `terraform output workload_issuer` |
+| `applications_workload_kid` | `dev-20260908` | `.kid` à côté de la clé |
+| `applications_blob_account_url` | `https://stenervisiontfca5c57.blob.core.windows.net` | `terraform output blob_endpoint` |
+| `applications_blob_container` | `dev-data` | `terraform output storage_containers` |
+| `applications_raw_archiver_azure_client_id` | *(api-rw)* | `terraform output workload_identities` |
+| `applications_raw_archiver_workload_subject` | `dev/api-rw` | idem |
+| `applications_workload_key` | → `vault_workload_issuer_key` | clé privée PEM (`issuer-keygen.sh`) |
+
 ## Applications — versions déployées
 
 | Variable | Image | Tag |
@@ -93,6 +106,7 @@ Les rôles portent chacun leurs propres défauts dans `defaults/main.yml` ;
 | `applications_front_sha` | `ghcr.io/enervision-g5/dashboard` | `sha-…` |
 | `applications_api_sha` | `ghcr.io/enervision-g5/api` | `sha-…` |
 | `applications_collector_sha` | `ghcr.io/enervision-g5/collector` | `sha-…` |
+| `applications_raw_archiver_sha` | `ghcr.io/enervision-g5/raw-archiver` | `sha-…` |
 
 MLflow n'est plus une application : il est déployé par le rôle `mlflow`
 (`provision.yml`), avec sa propre image construite sur place. Voir
@@ -105,7 +119,8 @@ MLflow n'est plus une application : il est déployé par le rôle `mlflow`
 applications_enabled:
   - front
   - api
-  # - collector   # dès que applications_collector_sha est renseigné
+  - collector
+  - raw-archiver
 ```
 
 ## Réseaux
@@ -134,4 +149,5 @@ docker_external_networks:
 | `monitoring_grafana_admin_password` | `vault_monitoring_grafana_admin_password` | monitoring |
 | `applications_api_jwt_secret` | `vault_applications_api_secret_key` | api (`JWT_SECRET`) |
 | `mlflow_azure_connection_string` | `vault_mlflow_azure_connection_string` | mlflow (si artefacts `wasbs://`) |
+| `applications_workload_key` | `vault_workload_issuer_key` | raw-archiver — clé privée PEM de l'émetteur d'identités |
 | `ansible_password` | `vault_ansible_ssh_password` | connexion SSH (`hosts.yml`) |

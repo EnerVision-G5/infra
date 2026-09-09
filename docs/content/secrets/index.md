@@ -30,6 +30,7 @@ et [`check-secrets.sh`](verification.md) le vérifie en CI.
 | `applications_api_jwt_secret` | `vault_applications_api_secret_key` | api — `JWT_SECRET` (≥ 32 caractères) |
 | `vault_garage_s3_access_key_id` / `_secret_access_key` | *(dans le vault)* | plus de consommateur — serving / training / etl retirés ; reviendront avec la nouvelle chaîne ML |
 | `mlflow_azure_connection_string` | `vault_mlflow_azure_connection_string` | mlflow — seulement si artefacts sur Azure Blob (`wasbs://`) |
+| `applications_workload_key` | `vault_workload_issuer_key` | raw-archiver — clé privée PEM de l'émetteur d'identités applicatives (`issuer-keygen.sh`) |
 
 !!! note "Nom de clé historique"
     `applications_api_jwt_secret` pointe `vault_applications_api_secret_key`

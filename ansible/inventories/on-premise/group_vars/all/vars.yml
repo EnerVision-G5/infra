@@ -60,12 +60,29 @@ applications_api_access_token_expire_minutes: 60
 # (kafka:9092 / energy.data.raw / 60 s / SITE001..005).
 applications_collector_mock_api_url: "http://192.168.8.180:8000"
 
+# --- Identités applicatives Azure (env DEV) ----------------------------
+# Sorties Terraform de l'environnement (terraform/DEV) + `az account show`.
+# La clé privée de l'émetteur est dans le Vault (rattachement plus bas).
+# Voir terraform/docs/identites-applicatives.md.
+applications_azure_tenant_id: "7f4f3591-5f6c-4f7b-a1bd-0a2dd8831218"
+applications_workload_issuer: "https://stenervisiontfca5c57.z28.web.core.windows.net/dev"
+applications_workload_kid: "dev-20260908"
+applications_blob_account_url: "https://stenervisiontfca5c57.blob.core.windows.net"
+applications_blob_container: "dev-data"
+
+# --- raw-archiver (dépôt `raw-archiver`) : Kafka → Parquet sur Azure Blob
+# Identité `api-rw` (écriture) — client_id + sujet depuis
+# `terraform output workload_identities`.
+applications_raw_archiver_azure_client_id: "0d5fdc3e-f0f6-48bf-b1f3-cc2f552a2183"
+applications_raw_archiver_workload_subject: "dev/api-rw"
+
 # Applications déployées. MLflow est déployé par le rôle `mlflow`
 # (provision.yml), pas ici.
 applications_enabled:
   - front
   - api
   - collector
+  - raw-archiver
 
 # Version déployée de chaque image : tag GHCR immuable d'un commit précis
 # (sha-<git-sha>), lu dans le résumé du run CD ou la page Packages du dépôt
@@ -74,6 +91,7 @@ applications_enabled:
 applications_front_sha: "sha-eb29a117dae590a8d0bbc9030f19ed2c2dae3246"
 applications_api_sha: "sha-665d1e5a553e7cecbf4e19e5f9d01228fdf061a3"
 applications_collector_sha: "sha-ba12e451bf5b75d690fa81c7050013f14f8347dd"
+applications_raw_archiver_sha: "sha-facd892ef46aea79ce08d369ee0f6b981b3613da"
 
 # DOCKER
 docker_external_networks:
@@ -105,6 +123,12 @@ monitoring_grafana_admin_password: "{{ vault_monitoring_grafana_admin_password }
 # laisse le rôle nommer ce qui manque plutôt qu'échouer sur une variable
 # indéfinie.
 mlflow_azure_connection_string: "{{ vault_mlflow_azure_connection_string | default('') }}"
+
+# Clé privée PEM de l'émetteur d'identités applicatives de l'environnement
+# (issuer-keygen.sh). Montée dans les conteneurs qui accèdent à Azure Blob
+# (raw-archiver, plus tard prediction-api). Générée hors Git, jamais dans
+# Terraform ni l'état. Voir terraform/docs/identites-applicatives.md.
+applications_workload_key: "{{ vault_workload_issuer_key | default('') }}"
 
 # Émis en JWT_SECRET dans api.env. >= 32 caractères, sinon l'API refuse de
 # démarrer. La clé Vault garde son nom historique (vault_applications_api_secret_key)
